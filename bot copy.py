@@ -1,0 +1,442 @@
+import telebot
+from telebot import types
+import sqlite3
+from datetime import datetime, timedelta
+import threading
+import time
+
+# THÔNG TIN CẤU HÌNH
+TOKEN = '8786795332:AAEK78FOden7Yo9slp16IAnZJaD4qZ65_yA'
+GROUP_IT_ID = -1003948107991
+
+bot = telebot.TeleBot(TOKEN)
+
+# KIẾN TRÚC HUB CHAT ĐA CHIỀU (Khách <-> IT Chính + N IT Phụ)
+ticket_hubs = {}  # Format: {ticket_id: {'customer': id, 'main': id, 'supports': [id1, id2]}}
+user_to_ticket = {} # Format: {user_id: ticket_id} (Dùng để check xem 1 người đang ở ticket nào, chặn nhận thêm việc)
+user_states = {}  
+
+# HÀM KẾT NỐI DATABASE
+def connect_db():
+    return sqlite3.connect('helpdesk.db', timeout=20, check_same_thread=False)
+
+def init_db():
+    conn = connect_db()
+    cursor = conn.cursor()
+    # Khởi tạo các bảng cơ bản
+    cursor.execute('CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, user_name TEXT, dept TEXT, issue TEXT, status TEXT, it_id INTEGER, it_name TEXT, created_at TEXT, rating INTEGER)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, name TEXT, dept TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS it_staff (it_id INTEGER PRIMARY KEY, it_real_name TEXT, it_phone TEXT)')
+    
+    # Cập nhật cấu trúc bảng cho chức năng Hỗ Trợ Mới
+    try: cursor.execute('ALTER TABLE tickets ADD COLUMN rating INTEGER')
+    except: pass
+    try: cursor.execute('ALTER TABLE it_staff ADD COLUMN it_phone TEXT')
+    except: pass
+    try: cursor.execute('ALTER TABLE tickets ADD COLUMN it_name TEXT')
+    except: pass 
+    try: cursor.execute('ALTER TABLE tickets ADD COLUMN support_it_ids TEXT')
+    except: pass 
+    try: cursor.execute('ALTER TABLE tickets ADD COLUMN support_it_names TEXT')
+    except: pass 
+    
+    # Phục hồi trí nhớ cấu trúc HUB sau khi khởi động lại
+    cursor.execute("SELECT id, user_id, it_id, support_it_ids FROM tickets WHERE status = 'Đang xử lý'")
+    for row in cursor.fetchall():
+        t_id, c_id, m_id, s_ids_str = row
+        s_ids = [int(x) for x in s_ids_str.split(',')] if s_ids_str else []
+        
+        ticket_hubs[t_id] = {'customer': c_id, 'main': m_id, 'supports': s_ids}
+        if c_id: user_to_ticket[c_id] = t_id
+        if m_id: user_to_ticket[m_id] = t_id
+        for s in s_ids: user_to_ticket[s] = t_id
+            
+    conn.commit()
+    conn.close()
+    print(f"Đã phục hồi {len(ticket_hubs)} HUB chat đang xử lý.")
+
+init_db()
+
+# BÀN PHÍM ĐÁNH GIÁ SAO
+def get_rating_keyboard(ticket_id):
+    markup = types.InlineKeyboardMarkup()
+    btns = [types.InlineKeyboardButton(f"{i} ⭐", callback_data=f"rate_{ticket_id}_{i}") for i in range(1, 6)]
+    markup.row(*btns)
+    return markup
+
+def get_report_keyboard():
+    return types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🚨 Báo sự cố mới", callback_data="reportIssue"))
+
+@bot.message_handler(commands=['pending'])
+def check_pending(message):
+    if message.chat.id != GROUP_IT_ID: return 
+    conn = connect_db(); cursor = conn.cursor()
+    cursor.execute("SELECT id, user_name, dept, created_at FROM tickets WHERE status = 'Mới'")
+    rows = cursor.fetchall(); conn.close()
+
+    if not rows:
+        bot.send_message(GROUP_IT_ID, "✅ Tuyệt vời! Hiện tại không còn sự cố nào đang chờ tiếp nhận.", message_thread_id=message.message_thread_id)
+    else:
+        text = "⚠️ **DANH SÁCH SỰ CỐ ĐANG CHỜ:**\n\n"
+        for r in rows: text += f"🔹 **#{r[0]}** - {r[1]} - {r[2]} - *{r[3][11:16]}*\n"
+        bot.send_message(GROUP_IT_ID, text, parse_mode="Markdown", message_thread_id=message.message_thread_id)
+
+notified_tickets = set()
+
+def auto_remind_it():
+    while True:
+        try:
+            time.sleep(60) # Thức dậy quét mỗi 60 giây (1 phút)
+            conn = connect_db()
+            cursor = conn.cursor()
+            
+            # Tính mốc thời gian cách đây đúng 15 phút
+            fifteen_mins_ago = (datetime.now() - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Tìm các ticket 'Mới' có thời gian tạo trước mốc 15 phút
+            cursor.execute("SELECT id FROM tickets WHERE status = 'Mới' AND created_at < ?", (fifteen_mins_ago,))
+            rows = cursor.fetchall()
+            conn.close()
+            
+            to_notify = []
+            for r in rows:
+                ticket_id = r[0]
+                # Nếu ticket này chưa được nhắc lần nào
+                if ticket_id not in notified_tickets:
+                    to_notify.append(ticket_id)
+                    notified_tickets.add(ticket_id) # Đánh dấu là đã nhắc
+                    
+            # Nếu có ticket cần nhắc thì gửi thông báo
+            if to_notify:
+                ids = ", ".join([f"#{tid}" for tid in to_notify])
+                bot.send_message(GROUP_IT_ID, f"📢 **THÔNG BÁO NHẮC VIỆC KHẨN CẤP!**\n\nCác sự cố {ids} đã treo hơn 15 phút mà chưa có ai tiếp nhận. Anh em IT vào kiểm tra và xử lý gấp nhé! 🔥", parse_mode="Markdown")
+                
+        except Exception as e:
+            print(f"Lỗi nhắc việc: {e}")
+
+threading.Thread(target=auto_remind_it, daemon=True).start()
+
+# --- TỰ ĐỘNG CHÀO MỪNG VÀ YÊU CẦU IT MỚI XÁC THỰC ---
+@bot.message_handler(content_types=['new_chat_members'])
+def welcome_new_it_member(message):
+    # Chỉ hoạt động trong nhóm IT
+    if message.chat.id != GROUP_IT_ID: return
+    
+    bot_info = bot.get_me()
+    auth_url = f"https://t.me/{bot_info.username}?start=iam_it"
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("👨‍💻 Bấm vào đây để Xác Thực IT", url=auth_url))
+    
+    for new_member in message.new_chat_members:
+        # Bỏ qua nếu thành viên mới được add vào là các con bot khác
+        if not new_member.is_bot: 
+            user_name = new_member.first_name
+            if new_member.last_name:
+                user_name += f" {new_member.last_name}"
+            
+            # Text có tag thẳng tên người dùng
+            text = f"👋 Chào mừng đồng đội IT mới [{user_name}](tg://user?id={new_member.id})!\n\n🚨 **QUAN TRỌNG:** Để hệ thống có thể chia việc cho bạn, bạn **BẮT BUỘC** phải nhấn vào nút bên dưới và bấm **Start** để xác thực tài khoản nhé."
+            
+            bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(commands=['setup_it'])
+def setup_it_group(message):
+    if message.chat.id != GROUP_IT_ID: return
+    auth_url = f"https://t.me/{bot.get_me().username}?start=iam_it"
+    markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("👨‍💻 Xác Thực IT", url=auth_url))
+    bot.send_message(message.chat.id, "🚨 **NHÂN SỰ IT:** Bấm nút để đăng ký tên & SĐT.", reply_markup=markup, parse_mode="Markdown", message_thread_id=message.message_thread_id)
+
+@bot.message_handler(commands=['setup'])
+def setup_group(message):
+    if message.chat.type == 'private': return
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2: return
+    dept_name = args[1]
+    safe_dept_code = dept_name.encode('utf-8').hex()
+    markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🆘 Hỗ trợ IT", url=f"https://t.me/{bot.get_me().username}?start={safe_dept_code}"))
+    bot.send_message(message.chat.id, f"🏢 **HỆ THỐNG HỖ TRỢ IT - {dept_name.upper()}**\n\nNhấn nút dưới để báo lỗi.", reply_markup=markup, parse_mode="Markdown", message_thread_id=message.message_thread_id)
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    if message.chat.type != 'private': return
+    args = message.text.split()
+    conn = connect_db(); cursor = conn.cursor()
+    if len(args) > 1:
+        if args[1] == 'it_support': return
+        if args[1] == 'iam_it': 
+            user_states[message.from_user.id] = {'step': 'waiting_for_it_name'}
+            bot.send_message(message.chat.id, "👨‍💻 **XÁC THỰC IT:** Nhập **Họ tên hiển thị** của bạn:", parse_mode="Markdown")
+            conn.close(); return
+        try:
+            dept = bytes.fromhex(args[1]).decode('utf-8')
+            cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (message.from_user.id, message.from_user.full_name, dept))
+            conn.commit()
+            user_states[message.from_user.id] = {'step': 'waiting_for_issue'}
+            bot.send_message(message.chat.id, f"✅ **Hệ thống IT - {dept}** chào bạn!\n\nMời bạn mô tả lỗi tại đây.", parse_mode="Markdown")
+        except: pass
+    else:
+        cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (message.from_user.id,))
+        user = cursor.fetchone()
+        if user: bot.send_message(message.chat.id, f"👋 Chào mừng trở lại, **{user[0]}**.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+        else:
+            user_states[message.from_user.id] = {'step': 'ask_name'}
+            bot.send_message(message.chat.id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
+    conn.close()
+
+@bot.message_handler(content_types=['text', 'photo', 'document'])
+def handle_all_messages(message):
+    if message.chat.id == GROUP_IT_ID: return 
+    if message.chat.type != 'private': return
+    if message.text and message.text.startswith('/'): return
+    sender_id = message.chat.id
+    state = user_states.get(sender_id)
+    
+    # 1. SETUP IT
+    if state:
+        if state.get('step') == 'waiting_for_it_name':
+            user_states[sender_id]['it_name'], user_states[sender_id]['step'] = message.text, 'waiting_for_it_phone'
+            bot.send_message(sender_id, f"📱 Chào **{message.text}**, nhập **Số điện thoại** của bạn:", parse_mode="Markdown")
+            return
+        elif state.get('step') == 'waiting_for_it_phone':
+            it_name, it_phone = state.get('it_name'), message.text
+            conn = connect_db(); conn.execute('INSERT OR REPLACE INTO it_staff (it_id, it_real_name, it_phone) VALUES (?, ?, ?)', (sender_id, it_name, it_phone)); conn.commit(); conn.close()
+            user_states.pop(sender_id, None)
+            bot.send_message(sender_id, f"✅ Xác thực thành công!\n👤 {it_name} - 📞 {it_phone}\nGiờ bạn có thể nhận việc.")
+            return
+
+    # 2. CHAT MULTI-HUB CHÍNH & PHỤ
+    if sender_id in user_to_ticket:
+        t_id = user_to_ticket[sender_id]
+        hub = ticket_hubs.get(t_id)
+        if hub:
+            # Xác định danh tính người gửi
+            if sender_id == hub['customer']: prefix = "👤 **Khách:** "
+            elif sender_id == hub['main']: prefix = "👨‍💻 **IT Chính:** "
+            else: prefix = "👨‍🔧 **IT Hỗ trợ:** "
+
+            # Lấy danh sách tất cả những người trong Hub TRỪ người gửi
+            recipients = [hub['customer'], hub['main']] + hub['supports']
+            
+            for r_id in set(recipients):
+                if r_id != sender_id and r_id is not None:
+                    try:
+                        if message.text: bot.send_message(r_id, f"{prefix}{message.text}", parse_mode="Markdown")
+                        elif message.photo: bot.send_photo(r_id, message.photo[-1].file_id, caption=f"{prefix}{message.caption or ''}", parse_mode="Markdown")
+                        elif message.document: bot.send_document(r_id, message.document.file_id, caption=f"{prefix}{message.caption or ''}", parse_mode="Markdown")
+                    except: pass
+        return
+        
+    # 3. LUỒNG BÁO LỖI KHÁCH HÀNG
+    conn = connect_db(); cursor = conn.cursor()
+    cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (sender_id,))
+    user = cursor.fetchone()
+    
+    if not user:
+        if not state:
+            user_states[sender_id] = {'step': 'ask_name'}
+            bot.send_message(sender_id, "Cho biết **Họ tên** của bạn:")
+        elif state['step'] == 'ask_name':
+            user_states[sender_id]['name'], user_states[sender_id]['step'] = message.text, 'ask_dept'
+            bot.send_message(sender_id, "🏢 Bạn thuộc **Phòng ban** nào?")
+        elif state['step'] == 'ask_dept':
+            cursor.execute('INSERT INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, state['name'], message.text))
+            conn.commit(); user_states.pop(sender_id, None)
+            bot.send_message(sender_id, "✅ Đã lưu!", reply_markup=get_report_keyboard())
+        conn.close(); return
+        
+    if not state or state.get('step') != 'waiting_for_issue':
+        bot.send_message(sender_id, "👇 Nhấn nút báo sự cố:", reply_markup=get_report_keyboard()); conn.close(); return
+        
+    issue_text = message.text or message.caption or "Gửi đính kèm"
+    cursor.execute('INSERT INTO tickets (user_id, user_name, dept, issue, status, created_at) VALUES (?, ?, ?, ?, ?, ?)', (sender_id, user[0], user[1], issue_text, 'Mới', datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    ticket_id, _ = cursor.lastrowid, conn.commit(); conn.close()
+    user_states.pop(sender_id, None)
+    
+    bot.send_message(sender_id, "✅ **Đã gửi IT.** Vui lòng đợi.", parse_mode="Markdown")
+    
+    msg_to_it = f"🚨 **YÊU CẦU MỚI!**\n🆔 Mã: #{ticket_id}\n👤 Khách: {user[0]}\n🏢 Phòng: {user[1]}\n📝 Nội dung: {issue_text}"
+    markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Nhận việc (Làm chính)", callback_data=f"claim_{ticket_id}"))
+    if message.content_type == 'photo': bot.send_photo(GROUP_IT_ID, message.photo[-1].file_id, caption=msg_to_it, reply_markup=markup, parse_mode="Markdown")
+    else: bot.send_message(GROUP_IT_ID, msg_to_it, reply_markup=markup, parse_mode="Markdown")
+
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    if call.data == 'reportIssue':
+        user_states[call.from_user.id] = {'step': 'waiting_for_issue'}
+        bot.edit_message_text("📝 **Mời bạn mô tả lỗi:**", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+        return
+
+    parts = call.data.split('_')
+    action = parts[0]; ticket_id = parts[1]
+    it_id = call.from_user.id
+
+    # ĐÁNH GIÁ SAO
+    if action == 'rate':
+        conn = connect_db(); cursor = conn.cursor()
+        cursor.execute('UPDATE tickets SET rating = ? WHERE id = ?', (parts[2], ticket_id)); conn.commit(); conn.close()
+        bot.edit_message_text(f"⭐ Đã đánh giá {parts[2]} sao!", chat_id=call.message.chat.id, message_id=call.message.message_id)
+        return
+
+    # KIỂM TRA IT CÓ TỒN TẠI KHÔNG
+    conn = connect_db(); cursor = conn.cursor()
+    cursor.execute('SELECT it_real_name, it_phone FROM it_staff WHERE it_id = ?', (it_id,))
+    it_info = cursor.fetchone()
+    if not it_info and action in ['claim', 'join']:
+        bot.answer_callback_query(call.id, "❌ Chưa xác thực IT!", show_alert=True); conn.close(); return
+
+    # --- 1. NHẬN VIỆC (IT CHÍNH) ---
+    if action == 'claim':
+        # CHECK BẬN: Chặn nhận việc nếu đang xử lý ticket khác
+        if it_id in user_to_ticket:
+            bot.answer_callback_query(call.id, "❌ BẠN ĐANG BẬN! Hãy hoàn thành Ticket hiện tại trước khi nhận thêm.", show_alert=True)
+            conn.close(); return
+
+        cursor.execute('SELECT user_id, status, user_name, dept, issue FROM tickets WHERE id = ?', (ticket_id,))
+        res = cursor.fetchone()
+        if not res or res[1] != 'Mới':
+            bot.answer_callback_query(call.id, "❌ Đã có người nhận!", show_alert=True); conn.close(); return
+        
+        user_id = res[0]
+        
+        # 3 NÚT TRONG CHAT RIÊNG CỦA IT CHÍNH
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("✅ Hoàn thành", callback_data=f"done_{ticket_id}_{call.message.message_id}"),
+                   types.InlineKeyboardButton("🆘 Thêm người hỗ trợ", callback_data=f"asksupport_{ticket_id}_{call.message.message_id}"))
+        markup.add(types.InlineKeyboardButton("🔙 Không thực hiện được (Trả lại)", callback_data=f"abort_{ticket_id}_{call.message.message_id}"))
+        
+        msg_to_it = f"🚀 **[LÀM CHÍNH] YÊU CẦU #{ticket_id}**\n👤 Khách: {res[2]}\n🏢 Phòng: {res[3]}\n📝 Lỗi: {res[4]}\n👉 Chat trực tiếp với khách bên dưới:"
+        try: bot.send_message(it_id, msg_to_it, reply_markup=markup, parse_mode="Markdown")
+        except: bot.answer_callback_query(call.id, "❌ Nhắn tin riêng với Bot trước!", show_alert=True); conn.close(); return
+
+        cursor.execute('UPDATE tickets SET it_id = ?, it_name = ?, status = ? WHERE id = ?', (it_id, it_info[0], 'Đang xử lý', ticket_id))
+        conn.commit()
+
+        # Update Group Message
+        text_proc = f"🚨 **YÊU CẦU #{ticket_id}**\n👤 Khách: {res[2]}\n🏢 Phòng: {res[3]}\n📝 Lỗi: {res[4]}\n\n⏳ **Đang xử lý**\n👨‍💻 **IT Chính:** {it_info[0]}"
+        if call.message.photo: bot.edit_message_caption(chat_id=GROUP_IT_ID, message_id=call.message.message_id, caption=text_proc, reply_markup=None, parse_mode="Markdown")
+        else: bot.edit_message_text(chat_id=GROUP_IT_ID, message_id=call.message.message_id, text=text_proc, reply_markup=None, parse_mode="Markdown")
+
+        # CẬP NHẬT HUB CHAT
+        ticket_hubs[int(ticket_id)] = {'customer': user_id, 'main': it_id, 'supports': []}
+        user_to_ticket[user_id] = int(ticket_id)
+        user_to_ticket[it_id] = int(ticket_id)
+        
+        # FIX: Hiển thị cả SĐT khi IT Chính nhận việc
+        bot.send_message(user_id, f"👨‍💻 IT **{it_info[0]}** ({it_info[1]}) đang hỗ trợ bạn. Vui lòng giữ kết nối.", parse_mode="Markdown")
+        bot.answer_callback_query(call.id, url=f"https://t.me/{bot.get_me().username}?start=it_support")
+
+    # --- 2. GỌI NGƯỜI HỖ TRỢ (NÚT DÀNH CHO IT CHÍNH) ---
+    elif action == 'asksupport':
+        bot.answer_callback_query(call.id, "Đã gửi yêu cầu hỗ trợ vào nhóm IT!")
+        markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Tham gia hỗ trợ", callback_data=f"join_{ticket_id}"))
+        
+        # Cập nhật lại tin nhắn nhóm để hiện nút Gọi hỗ trợ
+        cursor.execute('SELECT user_name, dept, issue, it_name FROM tickets WHERE id = ?', (ticket_id,))
+        res = cursor.fetchone()
+        if res:
+            text_help = f"🚨 **YÊU CẦU #{ticket_id} ĐANG CẦN SUPPORT** 🆘\n👤 Khách: {res[0]}\n🏢 Phòng: {res[1]}\n📝 Lỗi: {res[2]}\n\n👨‍💻 **IT Chính:** {res[3]} đang cần đồng đội hỗ trợ ca này!"
+            bot.send_message(GROUP_IT_ID, text_help, reply_markup=markup, parse_mode="Markdown")
+
+    # --- 3. IT KHÁC THAM GIA HỖ TRỢ ---
+    elif action == 'join':
+        hub = ticket_hubs.get(int(ticket_id))
+        if not hub:
+            bot.answer_callback_query(call.id, "❌ Ticket này đã đóng hoặc lỗi!", show_alert=True); conn.close(); return
+        if it_id == hub['main']:
+            bot.answer_callback_query(call.id, "❌ Bạn đã là người làm chính rồi!", show_alert=True); conn.close(); return
+        if it_id in user_to_ticket:
+            bot.answer_callback_query(call.id, "❌ BẠN ĐANG BẬN xử lý Ticket khác!", show_alert=True); conn.close(); return
+
+        # Thêm vào DB
+        cursor.execute('SELECT support_it_ids, support_it_names FROM tickets WHERE id = ?', (ticket_id,))
+        res = cursor.fetchone()
+        s_ids = f"{res[0]},{it_id}" if res[0] else str(it_id)
+        s_names = f"{res[1]}, {it_info[0]}" if res[1] else it_info[0]
+        cursor.execute('UPDATE tickets SET support_it_ids = ?, support_it_names = ? WHERE id = ?', (s_ids, s_names, ticket_id))
+        conn.commit()
+
+        # Thêm vào HUB
+        hub['supports'].append(it_id)
+        user_to_ticket[it_id] = int(ticket_id)
+
+        bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
+        
+        try: bot.send_message(it_id, f"🚀 **[HỖ TRỢ] YÊU CẦU #{ticket_id}**\nĐã tham gia nhóm chat của ticket này. Bạn có thể chat ngay.")
+        except: pass
+        
+        bot.send_message(hub['customer'], f"👨‍🔧 IT **{it_info[0]}** ({it_info[1]}) vừa tham gia hỗ trợ sự cố này.")
+        bot.send_message(hub['main'], f"👨‍🔧 Đồng đội **{it_info[0]}** ({it_info[1]}) vừa vào hỗ trợ bạn.")
+        
+        bot.answer_callback_query(call.id, url=f"https://t.me/{bot.get_me().username}?start=it_support")
+
+    # --- 4. KHÔNG THỰC HIỆN ĐƯỢC (TRẢ TICKET) ---
+    elif action == 'abort':
+        group_msg_id = parts[2] if len(parts) > 2 else None
+        hub = ticket_hubs.pop(int(ticket_id), None)
+        if not hub: conn.close(); return
+        
+        # Xóa cờ trạng thái bận của tất cả mọi người
+        user_to_ticket.pop(hub['customer'], None)
+        user_to_ticket.pop(hub['main'], None)
+        for s in hub['supports']: user_to_ticket.pop(s, None)
+
+        # Reset DB
+        cursor.execute("UPDATE tickets SET it_id=NULL, it_name=NULL, support_it_ids=NULL, support_it_names=NULL, status='Mới' WHERE id=?", (ticket_id,))
+        cursor.execute('SELECT user_name, dept, issue FROM tickets WHERE id = ?', (ticket_id,))
+        res = cursor.fetchone()
+        conn.commit()
+        
+        # FIX: XÓA TIN NHẮN CŨ BÁO "ĐANG XỬ LÝ" TRONG NHÓM IT 
+        if group_msg_id:
+            try: bot.delete_message(GROUP_IT_ID, group_msg_id)
+            except: pass
+        
+        # Xóa các nút
+        bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
+        bot.send_message(it_id, "🔙 Bạn đã nhả Ticket thành công.")
+        bot.send_message(hub['customer'], "⚠️ IT hiện tại đang bận xử lý khẩn cấp, sự cố của bạn đã được chuyển lại cho team. Sẽ có IT khác tiếp nhận ngay, xin thông cảm!")
+        
+        # Quăng lại vào nhóm
+        if res:
+            text_repost = f"🚨 **TICKET #{ticket_id} BỊ TRẢ LẠI (CẦN NGƯỜI NHẬN MỚI)**\n👤 Khách: {res[0]}\n🏢 Phòng: {res[1]}\n📝 Lỗi: {res[2]}"
+            markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Nhận việc", callback_data=f"claim_{ticket_id}"))
+            bot.send_message(GROUP_IT_ID, text_repost, reply_markup=markup, parse_mode="Markdown")
+
+    # --- 5. HOÀN THÀNH TICKET ---
+    elif action == 'done':
+        hub = ticket_hubs.get(int(ticket_id))
+        if not hub: conn.close(); return
+        if call.from_user.id != hub['main']:
+            bot.answer_callback_query(call.id, "❌ Chỉ IT Làm Chính mới có quyền Đóng Ticket!", show_alert=True); conn.close(); return
+
+        # Giải phóng mọi người
+        ticket_hubs.pop(int(ticket_id), None)
+        user_to_ticket.pop(hub['customer'], None)
+        user_to_ticket.pop(hub['main'], None)
+        for s in hub['supports']: user_to_ticket.pop(s, None)
+
+        cursor.execute("UPDATE tickets SET status = 'Hoàn thành' WHERE id = ?", (ticket_id,))
+        cursor.execute('SELECT user_name, dept, issue, it_name, support_it_names FROM tickets WHERE id = ?', (ticket_id,))
+        res = cursor.fetchone()
+        conn.commit()
+
+        try: bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
+        except: pass
+
+        if len(parts) > 2 and res:
+            sup_text = f"\n👨‍🔧 **Hỗ trợ:** {res[4]}" if res[4] else ""
+            text_fin = f"🚨 **YÊU CẦU #{ticket_id}**\n👤 Khách: {res[0]}\n🏢 Phòng: {res[1]}\n📝 Lỗi: {res[2]}\n\n✅ **Hoàn thành**\n👨‍💻 **IT Chính:** {res[3]}{sup_text}"
+            try: bot.edit_message_text(chat_id=GROUP_IT_ID, message_id=parts[2], text=text_fin, parse_mode="Markdown")
+            except: pass
+        
+        bot.send_message(hub['main'], f"🎉 Đã đóng Ticket **#{ticket_id}**.")
+        for s in hub['supports']: bot.send_message(s, f"🎉 Ticket **#{ticket_id}** đã được đóng bởi IT Chính.")
+        
+        bot.send_message(hub['customer'], f"✅ **Sự cố #{ticket_id} đã hoàn tất.**\nVui lòng đánh giá dịch vụ:", reply_markup=get_rating_keyboard(ticket_id), parse_mode="Markdown")
+        bot.send_message(hub['customer'], "👇 Báo sự cố khác:", reply_markup=get_report_keyboard())
+
+    conn.close()
+
+print("Bot đang khởi động (Phiên bản Enterprise - Multi Hub)...")
+bot.infinity_polling()
