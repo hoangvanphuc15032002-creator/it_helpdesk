@@ -16,6 +16,7 @@ bot = None
 TOKEN = None
 GROUP_IT_ID = None
 is_running = True
+last_reminder_msg_id = None 
 
 # HÀM KẾT NỐI DATABASE CHUNG
 def connect_db():
@@ -59,16 +60,15 @@ def init_db():
     conn.close()
 
 # =========================================================
-# LUỒNG TỰ ĐỘNG NHẮC VIỆC (Đã khôi phục)
+# LUỒNG TỰ ĐỘNG NHẮC VIỆC
 # =========================================================
 notified_tickets = set()
 
 def auto_remind_it():
-    global bot, GROUP_IT_ID, is_running
+    global bot, GROUP_IT_ID, is_running, last_reminder_msg_id
     while is_running:
         try:
             time.sleep(60) 
-            # Bỏ qua nếu Bot đang trong quá trình nạp cấu hình
             if not bot or not GROUP_IT_ID:
                 continue
                 
@@ -88,10 +88,16 @@ def auto_remind_it():
                     
             if to_notify:
                 ids = ", ".join([f"#{tid}" for tid in to_notify])
-                bot.send_message(GROUP_IT_ID, f"📢 **THÔNG BÁO NHẮC VIỆC KHẨN CẤP!**\n\nCác sự cố {ids} đã treo hơn 15 phút mà chưa có ai tiếp nhận. Anh em IT vào kiểm tra và xử lý gấp nhé! 🔥", parse_mode="Markdown")
+                
+                if last_reminder_msg_id:
+                    try: bot.delete_message(GROUP_IT_ID, last_reminder_msg_id)
+                    except: pass
+
+                msg = bot.send_message(GROUP_IT_ID, f"📢 **THÔNG BÁO NHẮC VIỆC KHẨN CẤP!**\n\nCác sự cố {ids} đã treo hơn 15 phút mà chưa có ai tiếp nhận. Anh em IT vào kiểm tra và xử lý gấp nhé! 🔥", parse_mode="Markdown")
+                last_reminder_msg_id = msg.message_id 
+
         except Exception as e:
             print(f"Lỗi nhắc việc: {e}")
-
 
 # =========================================================
 # CƠ CHẾ ĐỌC CẤU HÌNH & HOT-RELOAD
@@ -108,7 +114,6 @@ def get_config_from_db():
     return t, g
 
 def setup_bot_handlers(current_bot):
-    """Gắn toàn bộ logic xử lý tin nhắn vào instance bot hiện tại"""
     
     def get_rating_keyboard(ticket_id):
         markup = types.InlineKeyboardMarkup()
@@ -182,16 +187,24 @@ def setup_bot_handlers(current_bot):
                 cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (message.from_user.id, message.from_user.full_name, dept))
                 conn.commit()
                 user_states[message.from_user.id] = {'step': 'waiting_for_issue'}
-                current_bot.send_message(message.chat.id, f"✅ **Hệ thống IT - {dept}** chào bạn!\n\nMời bạn mô tả lỗi tại đây.", parse_mode="Markdown")
+                
+                # CẬP NHẬT: Thêm nút Hủy nếu vào bằng link sâu
+                markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("❌ Hủy báo cáo", callback_data="cancelReport"))
+                current_bot.send_message(message.chat.id, f"✅ **Hệ thống IT - {dept}** chào bạn!\n\nMời bạn mô tả lỗi tại đây.", reply_markup=markup, parse_mode="Markdown")
             except: pass
         else:
-            cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (message.from_user.id,))
-            user = cursor.fetchone()
-            if user: 
-                current_bot.send_message(message.chat.id, f"👋 Chào mừng trở lại, **{user[0]}** - Phòng: **{user[1]}**.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+            cursor.execute('SELECT it_real_name FROM it_staff WHERE it_id = ?', (message.from_user.id,))
+            is_it = cursor.fetchone()
+            if is_it:
+                current_bot.send_message(message.chat.id, f"👨‍💻 Chào IT **{is_it[0]}**. Tài khoản của bạn đã được xác thực.\nHãy theo dõi nhóm tổng để nhận việc nhé!", parse_mode="Markdown")
             else:
-                user_states[message.from_user.id] = {'step': 'ask_name'}
-                current_bot.send_message(message.chat.id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
+                cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (message.from_user.id,))
+                user = cursor.fetchone()
+                if user: 
+                    current_bot.send_message(message.chat.id, f"👋 Chào mừng trở lại, **{user[0]}** - Phòng: **{user[1]}**.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                else:
+                    user_states[message.from_user.id] = {'step': 'ask_name'}
+                    current_bot.send_message(message.chat.id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
         conn.close()
 
     @current_bot.message_handler(content_types=['text', 'photo', 'document'])
@@ -233,6 +246,14 @@ def setup_bot_handlers(current_bot):
             return
             
         conn = connect_db(); cursor = conn.cursor()
+
+        cursor.execute('SELECT it_real_name FROM it_staff WHERE it_id = ?', (sender_id,))
+        is_it = cursor.fetchone()
+        if is_it:
+            current_bot.send_message(sender_id, f"👨‍💻 Chào IT **{is_it[0]}**. Bạn hiện không xử lý sự cố nào.\nHãy chờ thông báo từ nhóm tổng nhé!", parse_mode="Markdown")
+            conn.close()
+            return
+
         cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (sender_id,))
         user = cursor.fetchone()
         
@@ -257,6 +278,13 @@ def setup_bot_handlers(current_bot):
                 conn.commit(); user_states.pop(sender_id, None)
                 current_bot.send_message(sender_id, "✅ Đã lưu!", reply_markup=get_report_keyboard())
             conn.close(); return
+
+        cursor.execute("SELECT id FROM tickets WHERE user_id = ? AND status = 'Mới'", (sender_id,))
+        pending_ticket = cursor.fetchone()
+        if pending_ticket:
+            current_bot.send_message(sender_id, f"⏳ Sự cố **#{pending_ticket[0]}** của bạn đang được đẩy lên nhóm IT.\nVui lòng chờ IT tiếp nhận trong giây lát và không nhắn thêm để tránh trôi tin nhé!", parse_mode="Markdown")
+            conn.close()
+            return
             
         if not state or state.get('step') != 'waiting_for_issue':
             current_bot.send_message(sender_id, "👇 Nhấn nút báo sự cố:", reply_markup=get_report_keyboard()); conn.close(); return
@@ -275,10 +303,23 @@ def setup_bot_handlers(current_bot):
 
     @current_bot.callback_query_handler(func=lambda call: True)
     def callback_handler(call):
+        
+        # CẬP NHẬT 1: Gắn thêm nút Hủy vào tin nhắn yêu cầu mô tả lỗi
         if call.data == 'reportIssue':
             user_states[call.from_user.id] = {'step': 'waiting_for_issue'}
+            markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("❌ Hủy báo cáo", callback_data="cancelReport"))
             try:
-                current_bot.edit_message_text("📝 **Mời bạn mô tả lỗi:**", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+                current_bot.edit_message_text("📝 **Mời bạn mô tả lỗi:**\n*(Hoặc nhấn nút Hủy bên dưới nếu bấm nhầm)*", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+            except telebot.apihelper.ApiTelegramException as e:
+                if "message is not modified" not in str(e):
+                    print(f"Lỗi Telegram: {e}")
+            return
+
+        # CẬP NHẬT 2: Xử lý khi khách hàng bấm nút Hủy
+        if call.data == 'cancelReport':
+            user_states.pop(call.from_user.id, None)
+            try:
+                current_bot.edit_message_text("✅ Đã hủy thao tác báo sự cố. Bạn cần hỗ trợ gì khác không?", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard())
             except telebot.apihelper.ApiTelegramException as e:
                 if "message is not modified" not in str(e):
                     print(f"Lỗi Telegram: {e}")
@@ -354,6 +395,15 @@ def setup_bot_handlers(current_bot):
             except: current_bot.answer_callback_query(call.id, "❌ Nhắn tin riêng với Bot trước!", show_alert=True); conn.close(); return
 
             cursor.execute('UPDATE tickets SET it_id = ?, it_name = ?, status = ? WHERE id = ?', (it_id, it_info[0], 'Đang xử lý', ticket_id))
+            
+            cursor.execute("SELECT count(*) FROM tickets WHERE status = 'Mới'")
+            if cursor.fetchone()[0] == 0:
+                global last_reminder_msg_id
+                if last_reminder_msg_id:
+                    try: current_bot.delete_message(GROUP_IT_ID, last_reminder_msg_id)
+                    except: pass
+                    last_reminder_msg_id = None
+            
             conn.commit()
 
             text_proc = f"🚨 **YÊU CẦU #{ticket_id}**\n👤 Khách: {res[2]}\n🏢 Phòng: {res[3]}\n📝 Lỗi: {res[4]}\n\n⏳ **Đang xử lý**\n👨‍💻 **IT Chính:** {it_info[0]}"
@@ -527,12 +577,9 @@ if __name__ == '__main__':
     print("🚀 Khởi động Hệ thống Bot IT Command Center (Hot-Reload Mode)...")
     init_db()
     
-    # Chạy Watchdog giám sát cấu hình
     watchdog_thread = threading.Thread(target=config_watchdog, daemon=True)
     watchdog_thread.start()
     
-    # Chạy luồng nhắc việc 15p
     threading.Thread(target=auto_remind_it, daemon=True).start()
     
-    # Chạy Polling nhận tin nhắn
     run_bot_polling()

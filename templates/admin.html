@@ -248,7 +248,7 @@
                     <div class="modern-card p-6 mb-8 border-l-4 border-emerald-500">
                         <div class="flex items-center justify-between mb-6">
                             <h3 class="text-lg font-black text-slate-800 flex items-center"><i class="fa-solid fa-robot text-emerald-500 mr-2"></i>Cấu Hình Hệ Thống Bot</h3>
-                            <span class="text-[10px] font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full uppercase">Cần Khởi Động Lại Bot Nếu Thay Đổi</span>
+                            <span class="text-[10px] font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full uppercase">Đợi 10s sau khi thay đổi</span>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
@@ -570,7 +570,7 @@
                 });
                 const data = await res.json(); 
                 if(data.success) {
-                    alert("✅ Lưu cấu hình thành công! Hãy TẮT và BẬT LẠI file bot.py để áp dụng thay đổi mới.");
+                    alert("✅ Lưu cấu hình thành công!");
                 } else {
                     alert("❌ Lỗi: " + data.error);
                 }
