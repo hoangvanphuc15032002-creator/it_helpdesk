@@ -195,7 +195,11 @@
                                         <td class="p-4 font-bold text-slate-400">#{{ d.id }}</td>
                                         <td class="p-4 font-bold text-slate-700">{{ d.name }}</td>
                                         <td class="p-4 text-center">
-                                            <span class="text-[10px] font-mono bg-slate-100 px-2 py-1 rounded text-slate-500">ID: {{ d.topic_id }}</span>
+                                            {% if d.topic_id %}
+                                            <span class="text-[10px] font-mono bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">ID: {{ d.topic_id }}</span>
+                                            {% else %}
+                                            <span class="text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-400">Không dùng</span>
+                                            {% endif %}
                                         </td>
                                         <td class="p-4 text-right">
                                             <button data-id="{{ d.id }}" data-name="{{ d.name }}" onclick="deleteDept(this.dataset.id, this.dataset.name)" class="px-3 py-1.5 bg-slate-100 text-slate-400 rounded-lg text-xs font-bold hover:bg-rose-500 hover:text-white transition" title="Xóa phòng ban">
@@ -241,6 +245,33 @@
                 </section>
 
                 <section id="tab-settings" class="admin-tab hidden tab-content">
+                    <div class="modern-card p-6 mb-8 border-l-4 border-emerald-500">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-lg font-black text-slate-800 flex items-center"><i class="fa-solid fa-robot text-emerald-500 mr-2"></i>Cấu Hình Hệ Thống Bot</h3>
+                            <span class="text-[10px] font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full uppercase">Cần Khởi Động Lại Bot Nếu Thay Đổi</span>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Bot Token (Lấy từ @BotFather)</label>
+                                <div class="relative">
+                                    <input type="password" id="cfgBotToken" value="{{ bot_token }}" class="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono pr-10" placeholder="123456789:ABCDefgh...">
+                                    <button type="button" onclick="toggleTokenVisibility()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-emerald-600 transition" title="Hiện/Ẩn Token">
+                                        <i id="tokenEyeIcon" class="fa-solid fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">ID Nhóm IT (Bắt đầu bằng dấu trừ -)</label>
+                                <input type="text" id="cfgGroupId" value="{{ group_id }}" class="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono" placeholder="-100xxxxxxxxx">
+                            </div>
+                        </div>
+                        <div class="mt-6 flex justify-end">
+                            <button onclick="saveBotSettings()" class="bg-emerald-600 text-white font-bold py-2.5 px-6 rounded-xl hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/30 flex items-center">
+                                <i class="fa-solid fa-floppy-disk mr-2"></i> Lưu Cấu Hình
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         <div class="lg:col-span-2 modern-card overflow-hidden flex flex-col h-[600px]">
                             <div class="p-5 border-b bg-slate-50/50 font-bold text-slate-800 flex items-center justify-between">
@@ -302,6 +333,22 @@
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('-ml-64');
+        }
+
+        // HÀM HIỆN/ẨN BOT TOKEN
+        function toggleTokenVisibility() {
+            const tokenInput = document.getElementById('cfgBotToken');
+            const eyeIcon = document.getElementById('tokenEyeIcon');
+            
+            if (tokenInput.type === 'password') {
+                tokenInput.type = 'text';
+                eyeIcon.classList.remove('fa-eye');
+                eyeIcon.classList.add('fa-eye-slash');
+            } else {
+                tokenInput.type = 'password';
+                eyeIcon.classList.remove('fa-eye-slash');
+                eyeIcon.classList.add('fa-eye');
+            }
         }
 
         function switchTab(tabId) {
@@ -508,6 +555,28 @@
             });
         }
 
+        async function saveBotSettings() {
+            const token = document.getElementById('cfgBotToken').value;
+            const groupId = document.getElementById('cfgGroupId').value;
+            
+            if(!token || !groupId) return alert("Vui lòng điền đầy đủ Token và ID Nhóm!");
+            if(!groupId.startsWith('-')) return alert("ID Nhóm thường bắt đầu bằng dấu trừ (-). Vui lòng kiểm tra lại!");
+
+            try {
+                const res = await fetch('/api/save_settings', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({bot_token: token, group_id: groupId}) 
+                });
+                const data = await res.json(); 
+                if(data.success) {
+                    alert("✅ Lưu cấu hình thành công! Hãy TẮT và BẬT LẠI file bot.py để áp dụng thay đổi mới.");
+                } else {
+                    alert("❌ Lỗi: " + data.error);
+                }
+            } catch(e) { alert("Lỗi kết nối tới máy chủ!"); }
+        }
+
         async function resetAdminPassword(username) {
             const newPwd = prompt(`Nhập mật khẩu mới cho [${username}]:`);
             if (!newPwd) return; 
@@ -550,7 +619,6 @@
         function exportExcel() {
             if(filteredTickets.length === 0) return alert("Không có dữ liệu!");
             
-            // Đã fix lỗi cú pháp do khoảng trắng ở đoạn này
             const ws = XLSX.utils.json_to_sheet(filteredTickets.map(t => ({ 
                 "Mã": "#" + t.id, 
                 "Khách": t.user_name, 

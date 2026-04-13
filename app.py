@@ -8,9 +8,7 @@ from pyngrok import ngrok
 app = Flask(__name__)
 app.secret_key = 'Sieu_Bao_Mat_Helpdesk_2026'
 
-BOT_TOKEN = '8786795332:AAEK78FOden7Yo9slp16IAnZJaD4qZ65_yA'
-GROUP_IT_ID = -1003948107991
-GROUP_COMPANY_ID = -1003858230465
+# Đã loại bỏ các giá trị Hardcode tại đây
 
 def get_db_connection():
     conn = sqlite3.connect('helpdesk.db', timeout=20, check_same_thread=False)
@@ -25,6 +23,9 @@ def init_web_db():
     # Bảng phòng ban (Giữ nguyên cấu trúc để không lỗi giao diện, nhưng sẽ không dùng topic_id nữa)
     cursor.execute('CREATE TABLE IF NOT EXISTS departments (id INTEGER PRIMARY KEY, name TEXT UNIQUE, topic_id INTEGER)')
     
+    # THÊM MỚI: Bảng settings để lưu cấu hình hệ thống
+    cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
+
     # Cập nhật DB cho Hỗ Trợ
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN rating INTEGER')
     except: pass
@@ -38,6 +39,13 @@ def init_web_db():
     admin_exist = cursor.execute("SELECT * FROM web_admins WHERE username='admin'").fetchone()
     if not admin_exist: cursor.execute("INSERT INTO web_admins (username, password, role) VALUES ('admin', '123456', 'superadmin')")
     
+    # Khởi tạo giá trị mặc định cho settings nếu chưa có
+    token_exist = cursor.execute("SELECT * FROM settings WHERE key='BOT_TOKEN'").fetchone()
+    if not token_exist: cursor.execute("INSERT INTO settings (key, value) VALUES ('BOT_TOKEN', 'ĐIỀN TOKEN VÀO ĐÂY')")
+    
+    group_exist = cursor.execute("SELECT * FROM settings WHERE key='GROUP_IT_ID'").fetchone()
+    if not group_exist: cursor.execute("INSERT INTO settings (key, value) VALUES ('GROUP_IT_ID', 'ĐIỀN ID NHÓM VÀO ĐÂY')")
+
     conn.commit()
     conn.close()
 
@@ -88,9 +96,21 @@ def admin_dashboard():
     users = conn.execute("SELECT * FROM users ORDER BY user_id DESC").fetchall()
     it_staff = conn.execute("SELECT * FROM it_staff").fetchall()
     admins = conn.execute("SELECT id, username, role FROM web_admins ORDER BY id ASC").fetchall()
+    
+    # Lấy thông số cấu hình đẩy ra template
+    bot_token = conn.execute("SELECT value FROM settings WHERE key='BOT_TOKEN'").fetchone()
+    group_id = conn.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()
+    
+    token_val = bot_token['value'] if bot_token else ""
+    group_val = group_id['value'] if group_id else ""
+
     conn.close()
     
-    return render_template('admin.html', tickets_json=json.dumps(tickets), departments_json=json.dumps([r['name'] for r in depts]), depts=depts, users=users, it_staff=it_staff, admins=admins)
+    return render_template('admin.html', 
+                           tickets_json=json.dumps(tickets), 
+                           departments_json=json.dumps([r['name'] for r in depts]), 
+                           depts=depts, users=users, it_staff=it_staff, admins=admins,
+                           bot_token=token_val, group_id=group_val)
 
 @app.route('/api/data')
 @login_required
@@ -99,6 +119,28 @@ def api_data():
     tickets = [dict(r) for r in conn.execute("SELECT * FROM tickets ORDER BY id DESC LIMIT 1000").fetchall()]
     conn.close()
     return jsonify({'tickets': tickets})
+
+# API mới: Lưu cấu hình Bot
+@app.route('/api/save_settings', methods=['POST'])
+@login_required
+def api_save_settings():
+    if session.get('role') != 'superadmin':
+        return jsonify({"success": False, "error": "Chỉ SuperAdmin mới được đổi cấu hình!"})
+        
+    data = request.json
+    token = data.get('bot_token')
+    group_id = data.get('group_id')
+    
+    if not token or not group_id: 
+        return jsonify({"success": False, "error": "Không được để trống!"})
+        
+    conn = get_db_connection()
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('BOT_TOKEN', ?)", (token.strip(),))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('GROUP_IT_ID', ?)", (group_id.strip(),))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"success": True})
 
 @app.route('/api/add_admin', methods=['POST'])
 @login_required

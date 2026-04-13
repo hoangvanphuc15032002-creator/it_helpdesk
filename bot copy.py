@@ -28,6 +28,9 @@ def init_db():
     cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, name TEXT, dept TEXT)')
     cursor.execute('CREATE TABLE IF NOT EXISTS it_staff (it_id INTEGER PRIMARY KEY, it_real_name TEXT, it_phone TEXT)')
     
+    # THÊM MỚI: Bảng departments để kéo danh sách phòng ban
+    cursor.execute('CREATE TABLE IF NOT EXISTS departments (id INTEGER PRIMARY KEY, name TEXT UNIQUE, topic_id INTEGER)')
+    
     # Cập nhật cấu trúc bảng cho chức năng Hỗ Trợ Mới
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN rating INTEGER')
     except: pass
@@ -38,6 +41,9 @@ def init_db():
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN support_it_ids TEXT')
     except: pass 
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN support_it_names TEXT')
+    except: pass 
+    # THÊM MỚI: Cột lưu ID tin nhắn gọi hỗ trợ để sau này xóa
+    try: cursor.execute('ALTER TABLE tickets ADD COLUMN group_support_msg_id INTEGER')
     except: pass 
     
     # Phục hồi trí nhớ cấu trúc HUB sau khi khởi động lại
@@ -65,7 +71,13 @@ def get_rating_keyboard(ticket_id):
     return markup
 
 def get_report_keyboard():
-    return types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🚨 Báo sự cố mới", callback_data="reportIssue"))
+    # SỬA ĐỔI: THÊM NÚT ĐỔI PHÒNG BAN VÀO MENU CHÍNH
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("🚨 Báo sự cố mới", callback_data="reportIssue"),
+        types.InlineKeyboardButton("🔄 Đổi phòng ban", callback_data="changeDept")
+    )
+    return markup
 
 @bot.message_handler(commands=['pending'])
 def check_pending(message):
@@ -149,12 +161,9 @@ def setup_it_group(message):
 @bot.message_handler(commands=['setup'])
 def setup_group(message):
     if message.chat.type == 'private': return
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2: return
-    dept_name = args[1]
-    safe_dept_code = dept_name.encode('utf-8').hex()
-    markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🆘 Hỗ trợ IT", url=f"https://t.me/{bot.get_me().username}?start={safe_dept_code}"))
-    bot.send_message(message.chat.id, f"🏢 **HỆ THỐNG HỖ TRỢ IT - {dept_name.upper()}**\n\nNhấn nút dưới để báo lỗi.", reply_markup=markup, parse_mode="Markdown", message_thread_id=message.message_thread_id)
+    # SỬA ĐỔI: Đưa ra 1 nút bấm với link tổng đến bot
+    markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🆘 Liên hệ IT (Báo sự cố)", url=f"https://t.me/{bot.get_me().username}"))
+    bot.send_message(message.chat.id, f"🏢 **CỔNG TIẾP NHẬN SỰ CỐ IT CHUNG**\n\nMọi người nhấn nút bên dưới để chuyển sang chat với Bot và báo lỗi nhé.", reply_markup=markup, parse_mode="Markdown", message_thread_id=message.message_thread_id)
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -177,7 +186,8 @@ def start(message):
     else:
         cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (message.from_user.id,))
         user = cursor.fetchone()
-        if user: bot.send_message(message.chat.id, f"👋 Chào mừng trở lại, **{user[0]}**.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+        if user: 
+            bot.send_message(message.chat.id, f"👋 Chào mừng trở lại, **{user[0]}** - Phòng: **{user[1]}**.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
         else:
             user_states[message.from_user.id] = {'step': 'ask_name'}
             bot.send_message(message.chat.id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
@@ -237,7 +247,19 @@ def handle_all_messages(message):
             bot.send_message(sender_id, "Cho biết **Họ tên** của bạn:")
         elif state['step'] == 'ask_name':
             user_states[sender_id]['name'], user_states[sender_id]['step'] = message.text, 'ask_dept'
-            bot.send_message(sender_id, "🏢 Bạn thuộc **Phòng ban** nào?")
+            
+            # SỬA ĐỔI: Kéo danh sách phòng ban từ CSDL tạo nút bấm
+            cursor.execute("SELECT name FROM departments")
+            depts = [row[0] for row in cursor.fetchall()]
+            
+            if depts:
+                markup = types.InlineKeyboardMarkup(row_width=1) 
+                for d in depts:
+                    markup.add(types.InlineKeyboardButton(d, callback_data=f"seldept_{d}"))
+                bot.send_message(sender_id, f"Chào **{message.text}**! Vui lòng chọn **Phòng ban** của bạn ở bên dưới:", reply_markup=markup, parse_mode="Markdown")
+            else:
+                bot.send_message(sender_id, "🏢 Vui lòng nhập tên **Phòng ban** của bạn:")
+                
         elif state['step'] == 'ask_dept':
             cursor.execute('INSERT INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, state['name'], message.text))
             conn.commit(); user_states.pop(sender_id, None)
@@ -259,12 +281,46 @@ def handle_all_messages(message):
     if message.content_type == 'photo': bot.send_photo(GROUP_IT_ID, message.photo[-1].file_id, caption=msg_to_it, reply_markup=markup, parse_mode="Markdown")
     else: bot.send_message(GROUP_IT_ID, msg_to_it, reply_markup=markup, parse_mode="Markdown")
 
-
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if call.data == 'reportIssue':
         user_states[call.from_user.id] = {'step': 'waiting_for_issue'}
         bot.edit_message_text("📝 **Mời bạn mô tả lỗi:**", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+        return
+
+    # SỬA ĐỔI: Luồng chức năng khi bấm nút "Đổi phòng ban"
+    if call.data == 'changeDept':
+        conn = connect_db(); cursor = conn.cursor()
+        cursor.execute('SELECT name FROM users WHERE user_id = ?', (call.from_user.id,))
+        user = cursor.fetchone()
+        if user:
+            user_states[call.from_user.id] = {'step': 'ask_dept', 'name': user[0]}
+            cursor.execute("SELECT name FROM departments")
+            depts = [row[0] for row in cursor.fetchall()]
+            
+            if depts:
+                markup = types.InlineKeyboardMarkup(row_width=1) 
+                for d in depts:
+                    markup.add(types.InlineKeyboardButton(d, callback_data=f"seldept_{d}"))
+                bot.edit_message_text(f"🔄 Đang cập nhật cho **{user[0]}**\n\nMời bạn chọn **Phòng ban** mới của mình:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+            else:
+                bot.edit_message_text("🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:", chat_id=call.message.chat.id, message_id=call.message.message_id)
+        conn.close()
+        return
+
+    # SỬA ĐỔI: Lưu phòng ban khi chọn từ danh sách nút
+    if call.data.startswith('seldept_'):
+        dept_name = call.data[8:]
+        sender_id = call.from_user.id
+        state = user_states.get(sender_id)
+        if state and state.get('step') == 'ask_dept':
+            conn = connect_db(); cursor = conn.cursor()
+            cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, state['name'], dept_name))
+            conn.commit(); conn.close()
+            user_states.pop(sender_id, None)
+            
+            text_success = f"✅ Đã lưu thông tin!\n👤 Tên: **{state['name']}**\n🏢 Phòng ban: **{dept_name}**\n\n👇 Nhấn nút bên dưới để báo sự cố:"
+            bot.edit_message_text(text_success, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
         return
 
     parts = call.data.split('_')
@@ -322,7 +378,6 @@ def callback_handler(call):
         user_to_ticket[user_id] = int(ticket_id)
         user_to_ticket[it_id] = int(ticket_id)
         
-        # FIX: Hiển thị cả SĐT khi IT Chính nhận việc
         bot.send_message(user_id, f"👨‍💻 IT **{it_info[0]}** ({it_info[1]}) đang hỗ trợ bạn. Vui lòng giữ kết nối.", parse_mode="Markdown")
         bot.answer_callback_query(call.id, url=f"https://t.me/{bot.get_me().username}?start=it_support")
 
@@ -336,7 +391,11 @@ def callback_handler(call):
         res = cursor.fetchone()
         if res:
             text_help = f"🚨 **YÊU CẦU #{ticket_id} ĐANG CẦN SUPPORT** 🆘\n👤 Khách: {res[0]}\n🏢 Phòng: {res[1]}\n📝 Lỗi: {res[2]}\n\n👨‍💻 **IT Chính:** {res[3]} đang cần đồng đội hỗ trợ ca này!"
-            bot.send_message(GROUP_IT_ID, text_help, reply_markup=markup, parse_mode="Markdown")
+            sent_msg = bot.send_message(GROUP_IT_ID, text_help, reply_markup=markup, parse_mode="Markdown")
+            
+            # Lưu lại ID của tin nhắn cầu cứu này vào DB
+            cursor.execute('UPDATE tickets SET group_support_msg_id = ? WHERE id = ?', (sent_msg.message_id, ticket_id))
+            conn.commit()
 
     # --- 3. IT KHÁC THAM GIA HỖ TRỢ ---
     elif action == 'join':
@@ -365,6 +424,7 @@ def callback_handler(call):
         try: bot.send_message(it_id, f"🚀 **[HỖ TRỢ] YÊU CẦU #{ticket_id}**\nĐã tham gia nhóm chat của ticket này. Bạn có thể chat ngay.")
         except: pass
         
+        # Báo cho Khách & IT chính
         bot.send_message(hub['customer'], f"👨‍🔧 IT **{it_info[0]}** ({it_info[1]}) vừa tham gia hỗ trợ sự cố này.")
         bot.send_message(hub['main'], f"👨‍🔧 Đồng đội **{it_info[0]}** ({it_info[1]}) vừa vào hỗ trợ bạn.")
         
@@ -381,15 +441,20 @@ def callback_handler(call):
         user_to_ticket.pop(hub['main'], None)
         for s in hub['supports']: user_to_ticket.pop(s, None)
 
-        # Reset DB
+        # Reset DB và Lấy luôn ID tin nhắn gọi hỗ trợ để xóa
         cursor.execute("UPDATE tickets SET it_id=NULL, it_name=NULL, support_it_ids=NULL, support_it_names=NULL, status='Mới' WHERE id=?", (ticket_id,))
-        cursor.execute('SELECT user_name, dept, issue FROM tickets WHERE id = ?', (ticket_id,))
+        cursor.execute('SELECT user_name, dept, issue, group_support_msg_id FROM tickets WHERE id = ?', (ticket_id,))
         res = cursor.fetchone()
         conn.commit()
         
         # FIX: XÓA TIN NHẮN CŨ BÁO "ĐANG XỬ LÝ" TRONG NHÓM IT 
         if group_msg_id:
             try: bot.delete_message(GROUP_IT_ID, group_msg_id)
+            except: pass
+
+        # XÓA CẢ TIN NHẮN GỌI HỖ TRỢ TRONG NHÓM (NẾU CÓ)
+        if res and res[3]:
+            try: bot.delete_message(GROUP_IT_ID, res[3])
             except: pass
         
         # Xóa các nút
@@ -416,13 +481,19 @@ def callback_handler(call):
         user_to_ticket.pop(hub['main'], None)
         for s in hub['supports']: user_to_ticket.pop(s, None)
 
+        # Lấy group_support_msg_id ra để chuẩn bị xóa
         cursor.execute("UPDATE tickets SET status = 'Hoàn thành' WHERE id = ?", (ticket_id,))
-        cursor.execute('SELECT user_name, dept, issue, it_name, support_it_names FROM tickets WHERE id = ?', (ticket_id,))
+        cursor.execute('SELECT user_name, dept, issue, it_name, support_it_names, group_support_msg_id FROM tickets WHERE id = ?', (ticket_id,))
         res = cursor.fetchone()
         conn.commit()
 
         try: bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
         except: pass
+
+        # XÓA TIN NHẮN GỌI HỖ TRỢ TRONG NHÓM IT KHI ĐÃ HOÀN THÀNH
+        if res and res[5]:
+            try: bot.delete_message(GROUP_IT_ID, res[5])
+            except: pass
 
         if len(parts) > 2 and res:
             sup_text = f"\n👨‍🔧 **Hỗ trợ:** {res[4]}" if res[4] else ""
@@ -433,10 +504,10 @@ def callback_handler(call):
         bot.send_message(hub['main'], f"🎉 Đã đóng Ticket **#{ticket_id}**.")
         for s in hub['supports']: bot.send_message(s, f"🎉 Ticket **#{ticket_id}** đã được đóng bởi IT Chính.")
         
-        bot.send_message(hub['customer'], f"✅ **Sự cố #{ticket_id} đã hoàn tất.**\nVui lòng đánh giá dịch vụ:", reply_markup=get_rating_keyboard(ticket_id), parse_mode="Markdown")
+        bot.send_message(hub['customer'], f"✅ **Sự cố của bạn đã hoàn tất.**\nVui lòng đánh giá dịch vụ:", reply_markup=get_rating_keyboard(ticket_id), parse_mode="Markdown")
         bot.send_message(hub['customer'], "👇 Báo sự cố khác:", reply_markup=get_report_keyboard())
 
     conn.close()
 
-print("Bot đang khởi động (Phiên bản Enterprise - Multi Hub)...")
+print("Bot đang khởi động (Phiên bản Enterprise - Clean Code)...")
 bot.infinity_polling()
