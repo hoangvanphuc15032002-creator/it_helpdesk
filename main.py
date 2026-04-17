@@ -3,7 +3,6 @@ import sys
 import time
 import socket
 
-# Hàm tự động quét IP LAN của máy tính đang chạy
 def get_lan_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

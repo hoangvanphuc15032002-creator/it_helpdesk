@@ -3,12 +3,9 @@ from functools import wraps
 import sqlite3
 import json
 import requests
-from pyngrok import ngrok 
 
 app = Flask(__name__)
 app.secret_key = 'Sieu_Bao_Mat_Helpdesk_2026'
-
-# Đã loại bỏ các giá trị Hardcode tại đây
 
 def get_db_connection():
     conn = sqlite3.connect('helpdesk.db', timeout=20, check_same_thread=False)
@@ -20,13 +17,10 @@ def init_web_db():
     cursor = conn.cursor()
     cursor.execute('CREATE TABLE IF NOT EXISTS web_admins (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, role TEXT)')
     
-    # Bảng phòng ban (Giữ nguyên cấu trúc để không lỗi giao diện, nhưng sẽ không dùng topic_id nữa)
     cursor.execute('CREATE TABLE IF NOT EXISTS departments (id INTEGER PRIMARY KEY, name TEXT UNIQUE, topic_id INTEGER)')
     
-    # THÊM MỚI: Bảng settings để lưu cấu hình hệ thống
     cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
 
-    # Cập nhật DB cho Hỗ Trợ
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN rating INTEGER')
     except: pass
     try: cursor.execute('ALTER TABLE it_staff ADD COLUMN it_phone TEXT')
@@ -39,7 +33,6 @@ def init_web_db():
     admin_exist = cursor.execute("SELECT * FROM web_admins WHERE username='admin'").fetchone()
     if not admin_exist: cursor.execute("INSERT INTO web_admins (username, password, role) VALUES ('admin', '123456', 'superadmin')")
     
-    # Khởi tạo giá trị mặc định cho settings nếu chưa có
     token_exist = cursor.execute("SELECT * FROM settings WHERE key='BOT_TOKEN'").fetchone()
     if not token_exist: cursor.execute("INSERT INTO settings (key, value) VALUES ('BOT_TOKEN', 'ĐIỀN TOKEN VÀO ĐÂY')")
     
@@ -97,7 +90,6 @@ def admin_dashboard():
     it_staff = conn.execute("SELECT * FROM it_staff").fetchall()
     admins = conn.execute("SELECT id, username, role FROM web_admins ORDER BY id ASC").fetchall()
     
-    # Lấy thông số cấu hình đẩy ra template
     bot_token = conn.execute("SELECT value FROM settings WHERE key='BOT_TOKEN'").fetchone()
     group_id = conn.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()
     
@@ -120,7 +112,6 @@ def api_data():
     conn.close()
     return jsonify({'tickets': tickets})
 
-# API mới: Lưu cấu hình Bot
 @app.route('/api/save_settings', methods=['POST'])
 @login_required
 def api_save_settings():
@@ -178,7 +169,6 @@ def api_add_department():
     if not name: return jsonify({"success": False, "error": "Thiếu tên"}), 400
     conn = get_db_connection()
     try:
-        # CHỈ LƯU VÀO DB, BỎ GỌI API TẠO TOPIC TELEGRAM
         conn.execute("INSERT INTO departments (name) VALUES (?)", (name,))
         conn.commit()
         return jsonify({"success": True})
@@ -191,13 +181,10 @@ def api_add_department():
 @login_required
 def api_delete_department(dept_id):
     conn = get_db_connection()
-    # CHỈ XÓA TRONG DB, BỎ GỌI API XÓA TOPIC TELEGRAM
     conn.execute("DELETE FROM departments WHERE id=?", (dept_id,))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
 
 if __name__ == '__main__':
-    try: public_url = ngrok.connect(8080).public_url; print(f"\n🚀 LINK ONLINE: {public_url}\n")
-    except: pass
     app.run(host='0.0.0.0', port=8080)

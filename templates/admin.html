@@ -329,13 +329,11 @@
     <script id="departments-data" type="application/json">{{ departments_json | safe }}</script>
 
     <script>
-        // HÀM BẬT TẮT SIDEBAR
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('-ml-64');
         }
 
-        // HÀM HIỆN/ẨN BOT TOKEN
         function toggleTokenVisibility() {
             const tokenInput = document.getElementById('cfgBotToken');
             const eyeIcon = document.getElementById('tokenEyeIcon');

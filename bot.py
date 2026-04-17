@@ -6,33 +6,29 @@ import threading
 import time
 import sys
 
-# KIẾN TRÚC HUB CHAT ĐA CHIỀU (Khách <-> IT Chính + N IT Phụ)
 ticket_hubs = {}  
 user_to_ticket = {} 
 user_states = {}  
 
-# Biến toàn cục quản lý trạng thái Bot
 bot = None
 TOKEN = None
 GROUP_IT_ID = None
 is_running = True
 last_reminder_msg_id = None 
 
-# HÀM KẾT NỐI DATABASE CHUNG
 def connect_db():
     return sqlite3.connect('helpdesk.db', timeout=20, check_same_thread=False)
 
 def init_db():
     conn = connect_db()
     cursor = conn.cursor()
-    # Khởi tạo các bảng cơ bản
+
     cursor.execute('CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, user_name TEXT, dept TEXT, issue TEXT, status TEXT, it_id INTEGER, it_name TEXT, created_at TEXT, rating INTEGER)')
     cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, name TEXT, dept TEXT)')
     cursor.execute('CREATE TABLE IF NOT EXISTS it_staff (it_id INTEGER PRIMARY KEY, it_real_name TEXT, it_phone TEXT)')
     cursor.execute('CREATE TABLE IF NOT EXISTS departments (id INTEGER PRIMARY KEY, name TEXT UNIQUE, topic_id INTEGER)')
     cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
     
-    # Cập nhật cấu trúc
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN rating INTEGER')
     except: pass
     try: cursor.execute('ALTER TABLE it_staff ADD COLUMN it_phone TEXT')
@@ -46,7 +42,6 @@ def init_db():
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN group_support_msg_id INTEGER')
     except: pass 
     
-    # Phục hồi Hub Chat
     cursor.execute("SELECT id, user_id, it_id, support_it_ids FROM tickets WHERE status = 'Đang xử lý'")
     for row in cursor.fetchall():
         t_id, c_id, m_id, s_ids_str = row
@@ -59,9 +54,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# =========================================================
-# LUỒNG TỰ ĐỘNG NHẮC VIỆC
-# =========================================================
 notified_tickets = set()
 
 def auto_remind_it():
@@ -99,9 +91,6 @@ def auto_remind_it():
         except Exception as e:
             print(f"Lỗi nhắc việc: {e}")
 
-# =========================================================
-# CƠ CHẾ ĐỌC CẤU HÌNH & HOT-RELOAD
-# =========================================================
 def get_config_from_db():
     conn = connect_db()
     cursor = conn.cursor()
@@ -188,7 +177,6 @@ def setup_bot_handlers(current_bot):
                 conn.commit()
                 user_states[message.from_user.id] = {'step': 'waiting_for_issue'}
                 
-                # CẬP NHẬT: Thêm nút Hủy nếu vào bằng link sâu
                 markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("❌ Hủy báo cáo", callback_data="cancelReport"))
                 current_bot.send_message(message.chat.id, f"✅ **Hệ thống IT - {dept}** chào bạn!\n\nMời bạn mô tả lỗi tại đây.", reply_markup=markup, parse_mode="Markdown")
             except: pass
@@ -304,7 +292,6 @@ def setup_bot_handlers(current_bot):
     @current_bot.callback_query_handler(func=lambda call: True)
     def callback_handler(call):
         
-        # CẬP NHẬT 1: Gắn thêm nút Hủy vào tin nhắn yêu cầu mô tả lỗi
         if call.data == 'reportIssue':
             user_states[call.from_user.id] = {'step': 'waiting_for_issue'}
             markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("❌ Hủy báo cáo", callback_data="cancelReport"))
@@ -315,7 +302,6 @@ def setup_bot_handlers(current_bot):
                     print(f"Lỗi Telegram: {e}")
             return
 
-        # CẬP NHẬT 2: Xử lý khi khách hàng bấm nút Hủy
         if call.data == 'cancelReport':
             user_states.pop(call.from_user.id, None)
             try:
@@ -570,9 +556,7 @@ def config_watchdog():
             
         time.sleep(10) 
 
-# =========================================================
 # CHẠY HỆ THỐNG
-# =========================================================
 if __name__ == '__main__':
     print("🚀 Khởi động Hệ thống Bot IT Command Center (Hot-Reload Mode)...")
     init_db()
