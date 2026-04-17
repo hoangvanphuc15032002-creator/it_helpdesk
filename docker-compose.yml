@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  it-helpdesk:
+    build: .
+    container_name: it_helpdesk_app
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./helpdesk.db:/app/helpdesk.db
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
