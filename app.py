@@ -3,6 +3,7 @@ from functools import wraps
 import sqlite3
 import json
 import requests
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 app.secret_key = 'Sieu_Bao_Mat_Helpdesk_2026'
@@ -20,6 +21,9 @@ def init_web_db():
     cursor.execute('CREATE TABLE IF NOT EXISTS departments (id INTEGER PRIMARY KEY, name TEXT UNIQUE, topic_id INTEGER)')
     
     cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
+
+    offset_exist = cursor.execute("SELECT * FROM settings WHERE key='TIME_OFFSET'").fetchone()
+    if not offset_exist: cursor.execute("INSERT INTO settings (key, value) VALUES ('TIME_OFFSET', '0')")
 
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN rating INTEGER')
     except: pass
@@ -93,8 +97,18 @@ def admin_dashboard():
     bot_token = conn.execute("SELECT value FROM settings WHERE key='BOT_TOKEN'").fetchone()
     group_id = conn.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()
     
+    time_offset_row = conn.execute("SELECT value FROM settings WHERE key='TIME_OFFSET'").fetchone()
+
     token_val = bot_token['value'] if bot_token else ""
     group_val = group_id['value'] if group_id else ""
+    offset_sec = int(time_offset_row['value']) if time_offset_row else 0
+
+    bot_time = datetime.now() + timedelta(seconds=offset_sec)
+    bot_time_str = bot_time.strftime('%Y-%m-%dT%H:%M')
+    bot_time_parts = {
+        'year': bot_time.year, 'month': bot_time.month - 1, 'day': bot_time.day,
+        'hour': bot_time.hour, 'minute': bot_time.minute, 'second': bot_time.second
+    }
 
     conn.close()
     
@@ -102,7 +116,8 @@ def admin_dashboard():
                            tickets_json=json.dumps(tickets), 
                            departments_json=json.dumps([r['name'] for r in depts]), 
                            depts=depts, users=users, it_staff=it_staff, admins=admins,
-                           bot_token=token_val, group_id=group_val)
+                           bot_token=token_val, group_id=group_val, 
+                           bot_time_str=bot_time_str, bot_time_parts=json.dumps(bot_time_parts))
 
 @app.route('/api/data')
 @login_required
@@ -121,13 +136,51 @@ def api_save_settings():
     data = request.json
     token = data.get('bot_token')
     group_id = data.get('group_id')
-    
+    custom_time = data.get('custom_time')
+
     if not token or not group_id: 
         return jsonify({"success": False, "error": "Không được để trống!"})
         
+    token_str = token.strip()
+    group_str = group_id.strip()
+
+    test_url = f"https://api.telegram.org/bot{token_str}/sendMessage"
+    test_payload = {
+        "chat_id": group_str,
+        "text": "🟢 **Hệ thống IT Helpdesk đã kết nối thành công với nhóm này!**\nSẵn sàng nhận và điều phối Ticket.",
+        "parse_mode": "Markdown"
+    }
+    
+    try:
+        r = requests.post(test_url, json=test_payload)
+        resp_data = r.json()
+        
+        if not resp_data.get('ok'):
+            error_msg = resp_data.get('description', 'Lỗi không xác định')
+            if "chat not found" in error_msg.lower():
+                return jsonify({"success": False, "error": "Sai ID Nhóm! Vui lòng kiểm tra lại."})
+            elif "bot is not a member" in error_msg.lower():
+                return jsonify({"success": False, "error": "Bot chưa được thêm vào nhóm này! Hãy thêm Bot vào nhóm trước."})
+            else:
+                return jsonify({"success": False, "error": f"Lỗi Telegram: {error_msg}"})
+                
+    except Exception as e:
+        return jsonify({"success": False, "error": "Không thể kết nối tới máy chủ Telegram. Hãy kiểm tra mạng!"})
+
+    # Nếu test thành công (tin nhắn đã nổ trong nhóm), tiến hành lưu vào Database
     conn = get_db_connection()
-    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('BOT_TOKEN', ?)", (token.strip(),))
-    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('GROUP_IT_ID', ?)", (group_id.strip(),))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('BOT_TOKEN', ?)", (token_str,))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('GROUP_IT_ID', ?)", (group_str,))
+    
+    if custom_time:
+        try:
+            target_time = datetime.strptime(custom_time, '%Y-%m-%dT%H:%M')
+            server_now = datetime.now()
+            offset_sec = int((target_time - server_now).total_seconds())
+            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('TIME_OFFSET', ?)", (str(offset_sec),))
+        except Exception:
+            pass
+    
     conn.commit()
     conn.close()
     
@@ -182,6 +235,74 @@ def api_add_department():
 def api_delete_department(dept_id):
     conn = get_db_connection()
     conn.execute("DELETE FROM departments WHERE id=?", (dept_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+# === CÁC API THÊM MỚI ĐỂ XỬ LÝ SỬA/XOÁ ===
+@app.route('/api/update_ticket', methods=['POST'])
+@login_required
+def api_update_ticket():
+    data = request.json
+    t_id = data.get('id')
+    issue = data.get('issue')
+    it_id = data.get('it_id')
+    it_name = data.get('it_name')
+    sup_names = data.get('support_it_names')
+    status = data.get('status')
+    
+    conn = get_db_connection()
+    conn.execute("UPDATE tickets SET issue=?, it_id=?, it_name=?, support_it_names=?, status=? WHERE id=?", 
+                 (issue, it_id, it_name, sup_names, status, t_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/delete_ticket/<int:t_id>', methods=['POST'])
+@login_required
+def api_delete_ticket(t_id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM tickets WHERE id=?", (t_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/update_it', methods=['POST'])
+@login_required
+def api_update_it():
+    data = request.json
+    conn = get_db_connection()
+    conn.execute("UPDATE it_staff SET it_real_name=?, it_phone=? WHERE it_id=?", 
+                 (data.get('name'), data.get('phone'), data.get('id')))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/delete_it/<int:it_id>', methods=['POST'])
+@login_required
+def api_delete_it(it_id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM it_staff WHERE it_id=?", (it_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/update_user', methods=['POST'])
+@login_required
+def api_update_user():
+    data = request.json
+    conn = get_db_connection()
+    conn.execute("UPDATE users SET name=?, dept=? WHERE user_id=?", 
+                 (data.get('name'), data.get('dept'), data.get('id')))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/delete_user/<int:u_id>', methods=['POST'])
+@login_required
+def api_delete_user(u_id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM users WHERE user_id=?", (u_id,))
     conn.commit()
     conn.close()
     return jsonify({"success": True})

@@ -13,6 +13,7 @@ user_states = {}
 bot = None
 TOKEN = None
 GROUP_IT_ID = None
+TIME_OFFSET = 0  # Biến lưu trữ bù trừ thời gian (Tính bằng Giây)
 is_running = True
 last_reminder_msg_id = None 
 
@@ -54,6 +55,35 @@ def init_db():
     conn.commit()
     conn.close()
 
+# --- HÀM LẤY THỜI GIAN ĐÃ BÙ TRỪ TÍNH BẰNG GIÂY ---
+def get_adjusted_time():
+    return datetime.now() + timedelta(seconds=TIME_OFFSET)
+
+# --- LUỒNG ĐỒNG BỘ RAM VỚI WEB ---
+def sync_hubs_with_db():
+    """Luồng đồng bộ: Nếu Ticket bị xoá hoặc đổi trạng thái trên Web, giải phóng RAM của Bot"""
+    global is_running
+    while is_running:
+        try:
+            time.sleep(5)
+            conn = connect_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, status FROM tickets")
+            db_tickets = {row[0]: row[1] for row in cursor.fetchall()}
+            conn.close()
+
+            current_ids = list(ticket_hubs.keys())
+            for t_id in current_ids:
+                if t_id not in db_tickets or db_tickets[t_id] != 'Đang xử lý':
+                    hub = ticket_hubs.pop(t_id, None)
+                    if hub:
+                        user_to_ticket.pop(hub.get('customer'), None)
+                        user_to_ticket.pop(hub.get('main'), None)
+                        for s_id in hub.get('supports', []):
+                            user_to_ticket.pop(s_id, None)
+        except Exception as e:
+            pass
+
 notified_tickets = set()
 
 def auto_remind_it():
@@ -66,7 +96,8 @@ def auto_remind_it():
                 
             conn = connect_db()
             cursor = conn.cursor()
-            fifteen_mins_ago = (datetime.now() - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+            # Dùng get_adjusted_time() thay vì datetime.now()
+            fifteen_mins_ago = (get_adjusted_time() - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute("SELECT id FROM tickets WHERE status = 'Mới' AND created_at < ?", (fifteen_mins_ago,))
             rows = cursor.fetchall()
             conn.close()
@@ -96,14 +127,25 @@ def get_config_from_db():
     cursor = conn.cursor()
     token_row = cursor.execute("SELECT value FROM settings WHERE key='BOT_TOKEN'").fetchone()
     group_row = cursor.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()
+    offset_row = cursor.execute("SELECT value FROM settings WHERE key='TIME_OFFSET'").fetchone()
     conn.close()
     
     t = token_row[0].strip() if token_row else None
     g = group_row[0].strip() if group_row else None
-    return t, g
+    o = int(offset_row[0]) if offset_row else 0
+    return t, g, o
 
 def setup_bot_handlers(current_bot):
-    
+
+    @current_bot.message_handler(commands=['getid'])
+    def get_exact_id(message):
+        # Lệnh này không bị giới hạn bởi GROUP_IT_ID, ai gõ ở đâu bot cũng báo ID ở đó
+        current_bot.send_message(
+            message.chat.id, 
+            f"🎯 ID CHÍNH XÁC CỦA NHÓM NÀY LÀ:\n\n`{message.chat.id}`\n\n👉 Hãy copy DÃY SỐ TRÊN (bao gồm cả dấu trừ) và dán vào Web Dashboard!", 
+            parse_mode="Markdown"
+        )
+        
     def get_rating_keyboard(ticket_id):
         markup = types.InlineKeyboardMarkup()
         btns = [types.InlineKeyboardButton(f"{i} ⭐", callback_data=f"rate_{ticket_id}_{i}") for i in range(1, 6)]
@@ -278,7 +320,9 @@ def setup_bot_handlers(current_bot):
             current_bot.send_message(sender_id, "👇 Nhấn nút báo sự cố:", reply_markup=get_report_keyboard()); conn.close(); return
             
         issue_text = message.text or message.caption or "Gửi đính kèm"
-        cursor.execute('INSERT INTO tickets (user_id, user_name, dept, issue, status, created_at) VALUES (?, ?, ?, ?, ?, ?)', (sender_id, user[0], user[1], issue_text, 'Mới', datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
+        # --- SỬ DỤNG get_adjusted_time() ĐỂ LẤY THỜI GIAN ĐÃ BÙ TRỪ KHI TẠO TICKET ---
+        cursor.execute('INSERT INTO tickets (user_id, user_name, dept, issue, status, created_at) VALUES (?, ?, ?, ?, ?, ?)', (sender_id, user[0], user[1], issue_text, 'Mới', get_adjusted_time().strftime("%Y-%m-%d %H:%M:%S")))
         ticket_id, _ = cursor.lastrowid, conn.commit(); conn.close()
         user_states.pop(sender_id, None)
         
@@ -524,36 +568,43 @@ def run_bot_polling():
                 time.sleep(5)
 
 def config_watchdog():
-    global bot, TOKEN, GROUP_IT_ID, is_running
+    global bot, TOKEN, GROUP_IT_ID, TIME_OFFSET, is_running
     while is_running:
         try:
-            new_token, new_group = get_config_from_db()
+            new_token, new_group_str, new_offset = get_config_from_db()
             
             if not new_token or new_token == 'ĐIỀN TOKEN VÀO ĐÂY':
                 time.sleep(10)
                 continue
                 
-            try: new_group = int(new_group)
+            try: 
+                new_group = int(new_group_str)
             except: 
                 time.sleep(10)
                 continue
 
-            if new_token != TOKEN or new_group != GROUP_IT_ID:
-                print(f"\n🔄 Đã phát hiện thay đổi cấu hình! Đang tải lại Bot...")
-                
+            # Cập nhật thời gian bù trừ
+            TIME_OFFSET = new_offset
+
+            # Nếu chưa có TOKEN (lúc mới chạy) HOẶC Token bị thay đổi -> Bắt buộc Restart Bot
+            if new_token != TOKEN:
+                print(f"\n🔄 Phát hiện Token mới! Đang tải lại Bot...")
                 if bot:
                     bot.stop_polling()
-                    
+                    time.sleep(3) 
                 TOKEN = new_token
                 GROUP_IT_ID = new_group
-                
                 bot = telebot.TeleBot(TOKEN)
                 setup_bot_handlers(bot)
-                print(f"✅ Đã tải cấu hình mới thành công! Đang giám sát nhóm IT: {GROUP_IT_ID}")
+                print(f"✅ Tải Token mới thành công! Giám sát nhóm: {GROUP_IT_ID}")
+                
+            # Nếu Token GIỮ NGUYÊN, chỉ đổi mỗi ID Nhóm -> KHÔNG Restart Bot, chỉ cập nhật biến
+            elif new_group != GROUP_IT_ID:
+                GROUP_IT_ID = new_group
+                print(f"🔄 Đã cập nhật ID Nhóm mới: {GROUP_IT_ID} (Bot vẫn chạy mượt mà)")
 
         except Exception as e:
-            print(f"Lỗi Watchdog: {e}")
-            
+            pass
         time.sleep(10) 
 
 # CHẠY HỆ THỐNG
@@ -565,5 +616,7 @@ if __name__ == '__main__':
     watchdog_thread.start()
     
     threading.Thread(target=auto_remind_it, daemon=True).start()
+    
+    threading.Thread(target=sync_hubs_with_db, daemon=True).start()
     
     run_bot_polling()
