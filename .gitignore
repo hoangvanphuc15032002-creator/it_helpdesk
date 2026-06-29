@@ -1,0 +1,4 @@
+helpdesk.db
+helpdesk.db-wal
+helpdesk.db-shm
+*.db

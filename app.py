@@ -1,15 +1,17 @@
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, send_file
 from functools import wraps
 import sqlite3
 import json
 import requests
+import os
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
-app.secret_key = 'Sieu_Bao_Mat_Helpdesk_2026'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'Sieu_Bao_Mat_Helpdesk_2026')
 
 def get_db_connection():
     conn = sqlite3.connect('helpdesk.db', timeout=20, check_same_thread=False)
+    conn.execute('PRAGMA journal_mode=WAL;')
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -60,6 +62,13 @@ def login():
     if request.method == 'POST':
         u, p = request.form['username'], request.form['password']
         conn = get_db_connection()
+        
+        cursor = conn.cursor()
+        admin_exist = cursor.execute("SELECT * FROM web_admins WHERE username='admin'").fetchone()
+        if not admin_exist:
+            cursor.execute("INSERT OR IGNORE INTO web_admins (username, password, role) VALUES ('admin', '123456', 'superadmin')")
+            conn.commit()
+            
         admin = conn.execute("SELECT * FROM web_admins WHERE username=? AND password=?", (u, p)).fetchone()
         conn.close()
         if admin:
@@ -127,12 +136,22 @@ def api_data():
     conn.close()
     return jsonify({'tickets': tickets})
 
+@app.route('/api/export_db')
+@login_required
+def api_export_db():
+    if session.get('role') != 'superadmin':
+        return "Truy cập bị từ chối! Chỉ SuperAdmin mới được xuất Database.", 403
+    
+    db_path = 'helpdesk.db'
+    if os.path.exists(db_path):
+        filename = f"helpdesk_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db"
+        return send_file(db_path, as_attachment=True, download_name=filename)
+    return "Không tìm thấy file Database trên server!", 404
+
 @app.route('/api/save_settings', methods=['POST'])
 @login_required
 def api_save_settings():
-    if session.get('role') != 'superadmin':
-        return jsonify({"success": False, "error": "Chỉ SuperAdmin mới được đổi cấu hình!"})
-        
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý không có quyền sửa cấu hình!"})
     data = request.json
     token = data.get('bot_token')
     group_id = data.get('group_id')
@@ -167,7 +186,6 @@ def api_save_settings():
     except Exception as e:
         return jsonify({"success": False, "error": "Không thể kết nối tới máy chủ Telegram. Hãy kiểm tra mạng!"})
 
-    # Nếu test thành công (tin nhắn đã nổ trong nhóm), tiến hành lưu vào Database
     conn = get_db_connection()
     conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('BOT_TOKEN', ?)", (token_str,))
     conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('GROUP_IT_ID', ?)", (group_str,))
@@ -189,18 +207,20 @@ def api_save_settings():
 @app.route('/api/add_admin', methods=['POST'])
 @login_required
 def api_add_admin():
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Bạn không có quyền thêm tài khoản!"})
     data = request.json
-    u, p = data.get('username'), data.get('password')
+    u, p, r = data.get('username'), data.get('password'), data.get('role', 'admin')
     if not u or not p: return jsonify({"success": False, "error": "Thiếu thông tin!"})
     conn = get_db_connection()
     if conn.execute("SELECT * FROM web_admins WHERE username=?", (u,)).fetchone():
         conn.close(); return jsonify({"success": False, "error": "Tài khoản tồn tại!"})
-    conn.execute("INSERT INTO web_admins (username, password, role) VALUES (?, ?, 'admin')", (u, p)); conn.commit(); conn.close()
+    conn.execute("INSERT INTO web_admins (username, password, role) VALUES (?, ?, ?)", (u, p, r)); conn.commit(); conn.close()
     return jsonify({"success": True})
 
 @app.route('/api/admin_reset_password', methods=['POST'])
 @login_required
 def api_admin_reset_password():
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Bạn không có quyền sửa mật khẩu!"})
     data = request.json
     if not data.get('username') or not data.get('new_password'): return jsonify({"success": False, "error": "Dữ liệu sai"})
     conn = get_db_connection(); conn.execute("UPDATE web_admins SET password=? WHERE username=?", (data.get('new_password'), data.get('username'))); conn.commit(); conn.close()
@@ -209,6 +229,7 @@ def api_admin_reset_password():
 @app.route('/api/delete_admin/<int:admin_id>', methods=['POST'])
 @login_required
 def api_delete_admin(admin_id):
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Bạn không có quyền xóa tài khoản!"})
     conn = get_db_connection()
     if conn.execute("SELECT username FROM web_admins WHERE id=?", (admin_id,)).fetchone()['username'] == 'admin':
         conn.close(); return jsonify({"success": False, "error": "Không xóa Admin gốc!"})
@@ -218,6 +239,7 @@ def api_delete_admin(admin_id):
 @app.route('/api/add_department', methods=['POST'])
 @login_required
 def api_add_department():
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Bạn không có quyền thao tác!"}), 403
     name = request.json.get('dept_name')
     if not name: return jsonify({"success": False, "error": "Thiếu tên"}), 400
     conn = get_db_connection()
@@ -233,16 +255,17 @@ def api_add_department():
 @app.route('/api/delete_department/<int:dept_id>', methods=['POST'])
 @login_required
 def api_delete_department(dept_id):
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Bạn không có quyền thao tác!"}), 403
     conn = get_db_connection()
     conn.execute("DELETE FROM departments WHERE id=?", (dept_id,))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
 
-# === CÁC API THÊM MỚI ĐỂ XỬ LÝ SỬA/XOÁ ===
 @app.route('/api/update_ticket', methods=['POST'])
 @login_required
 def api_update_ticket():
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
     data = request.json
     t_id = data.get('id')
     issue = data.get('issue')
@@ -261,6 +284,7 @@ def api_update_ticket():
 @app.route('/api/delete_ticket/<int:t_id>', methods=['POST'])
 @login_required
 def api_delete_ticket(t_id):
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
     conn = get_db_connection()
     conn.execute("DELETE FROM tickets WHERE id=?", (t_id,))
     conn.commit()
@@ -270,6 +294,7 @@ def api_delete_ticket(t_id):
 @app.route('/api/update_it', methods=['POST'])
 @login_required
 def api_update_it():
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
     data = request.json
     conn = get_db_connection()
     conn.execute("UPDATE it_staff SET it_real_name=?, it_phone=? WHERE it_id=?", 
@@ -281,6 +306,7 @@ def api_update_it():
 @app.route('/api/delete_it/<int:it_id>', methods=['POST'])
 @login_required
 def api_delete_it(it_id):
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
     conn = get_db_connection()
     conn.execute("DELETE FROM it_staff WHERE it_id=?", (it_id,))
     conn.commit()
@@ -290,6 +316,7 @@ def api_delete_it(it_id):
 @app.route('/api/update_user', methods=['POST'])
 @login_required
 def api_update_user():
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
     data = request.json
     conn = get_db_connection()
     conn.execute("UPDATE users SET name=?, dept=? WHERE user_id=?", 
@@ -301,6 +328,7 @@ def api_update_user():
 @app.route('/api/delete_user/<int:u_id>', methods=['POST'])
 @login_required
 def api_delete_user(u_id):
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
     conn = get_db_connection()
     conn.execute("DELETE FROM users WHERE user_id=?", (u_id,))
     conn.commit()

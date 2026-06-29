@@ -1,11 +1,24 @@
 version: '3.8'
 
 services:
-  it-helpdesk:
+  # TIẾN TRÌNH 1: GIAO DIỆN WEB DASHBOARD
+  web-dashboard:
     build: .
-    container_name: it_helpdesk_app
+    container_name: it_helpdesk_web
+    command: python app.py
     ports:
       - "8080:8080"
+    volumes:
+      - ./helpdesk.db:/app/helpdesk.db
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # TIẾN TRÌNH 2: BOT TELEGRAM
+  telegram-bot:
+    build: .
+    container_name: it_helpdesk_bot
+    command: python bot.py
     volumes:
       - ./helpdesk.db:/app/helpdesk.db
     restart: always
