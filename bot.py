@@ -230,6 +230,52 @@ def safe_edit_message(current_bot, chat_id, message_id, new_text, reply_markup=N
 
 def setup_bot_handlers(current_bot):
 
+    # ==========================================
+    # CỬA THOÁT HIỂM: GIẢI CỨU TÀI KHOẢN BỊ KẸT
+    # ==========================================
+    @current_bot.message_handler(commands=['giaicuu'])
+    def rescue_command(message):
+        if message.chat.type != 'private': return
+        conn = connect_db()
+        cursor = conn.cursor()
+        
+        # 1. Tìm những người (khách hàng, IT) đang kẹt trong Ticket ma
+        cursor.execute("SELECT user_id, role FROM active_sessions WHERE ticket_id NOT IN (SELECT id FROM tickets)")
+        stuck_users = cursor.fetchall()
+        
+        # 2. Dọn dẹp toàn bộ phiên chat rác (Ticket đã bị xoá)
+        cursor.execute("DELETE FROM active_sessions WHERE ticket_id NOT IN (SELECT id FROM tickets)")
+        
+        # 3. Xóa trạng thái bận của người gõ lệnh (phòng hờ)
+        cursor.execute("DELETE FROM active_sessions WHERE user_id = ?", (message.from_user.id,))
+        
+        # 4. Xóa các state đang điền dở dang
+        cursor.execute("DELETE FROM user_states_db WHERE user_id = ?", (message.from_user.id,))
+        
+        conn.commit()
+        conn.close()
+        
+        # 5. Gửi thông báo và trả lại bàn phím cho những người bị kẹt
+        for uid, role in stuck_users:
+            if uid != message.from_user.id:
+                try:
+                    if role == 'customer':
+                        current_bot.send_message(uid, "⚠️ **Hệ thống đã reset kết nối do sự cố (Ticket bị hủy hoặc mất dữ liệu).**\nBạn đã được trả về trạng thái tự do. Vui lòng sử dụng nút bên dưới để báo lại sự cố nếu cần thiết.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                    else:
+                        current_bot.send_message(uid, "⚠️ **Hệ thống đã reset kết nối do sự cố (Ticket bị hủy).**\nBạn đã được trả về trạng thái tự do.", parse_mode="Markdown")
+                except:
+                    pass
+        
+        text = (
+            "🚑 **GIAO THỨC GIẢI CỨU THÀNH CÔNG!**\n\n"
+            "✅ Hệ thống đã dọn dẹp các phiên chat ảo.\n"
+            "✅ Đã trả lại các nút báo lỗi cho khách hàng bị kẹt.\n"
+            "✅ Tài khoản của bạn đã được reset về trạng thái tự do.\n\n"
+            "👉 Bạn có thể tiếp tục nhận hoặc báo Ticket mới!"
+        )
+        current_bot.reply_to(message, text, parse_mode="Markdown")
+    # ==========================================
+
     @current_bot.message_handler(commands=['getid'])
     def get_exact_id(message):
         current_bot.send_message(message.chat.id, f"🎯 ID CHÍNH XÁC CỦA NHÓM NÀY LÀ:\n\n`{message.chat.id}`\n\n👉 Copy DÃY SỐ TRÊN dán vào Web!", parse_mode="Markdown")
@@ -294,7 +340,7 @@ def setup_bot_handlers(current_bot):
         else:
             cursor.execute('SELECT it_real_name FROM it_staff WHERE it_id = ?', (message.from_user.id,))
             if cursor.fetchone():
-                current_bot.send_message(message.chat.id, "👨‍💻 Chào IT. Tài khoản đã xác thực.\nHãy theo dõi nhóm tổng để nhận việc nhé!")
+                current_bot.send_message(message.chat.id, "👨‍💻 Chào IT. Tài khoản đã xác thực.\nHãy theo dõi nhóm tổng để nhận việc nhé!\n\n*(Nếu hệ thống báo kẹt, gõ lệnh /giaicuu)*", parse_mode="Markdown")
             else:
                 cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (message.from_user.id,))
                 user = cursor.fetchone()
@@ -472,15 +518,11 @@ def setup_bot_handlers(current_bot):
         if not it_info and action in ['claim', 'join', 'leave']:
             current_bot.answer_callback_query(call.id, "❌ Chưa xác thực IT!", show_alert=True); conn.close(); return
 
-        # ------------------
-        # PHẦN VÁ LỖI XUNG ĐỘT (RACE CONDITION)
-        # ------------------
         if action == 'claim':
             cursor.execute("SELECT ticket_id FROM active_sessions WHERE user_id = ?", (it_id,))
             if cursor.fetchone():
                 current_bot.answer_callback_query(call.id, "❌ BẠN ĐANG BẬN xử lý Ticket khác!", show_alert=True); conn.close(); return
 
-            # 1. ATOMIC UPDATE LÀM CHÍNH
             cursor.execute("UPDATE tickets SET it_id = ?, it_name = ?, status = 'Đang xử lý' WHERE id = ? AND status = 'Mới'", (it_id, it_info[0], ticket_id))
             if cursor.rowcount == 0:
                 current_bot.answer_callback_query(call.id, "❌ Chậm tay! Đã có người nhận hoặc Ticket bị hủy.", show_alert=True); conn.close(); return
@@ -551,7 +593,6 @@ def setup_bot_handlers(current_bot):
             s_ids = f"{old_ids},{it_id}" if old_ids else str(it_id)
             s_names = f"{old_names}, {it_info[0]}" if old_names else it_info[0]
             
-            # 2. ATOMIC UPDATE THAM GIA HỖ TRỢ (Khóa Lạc Quan)
             if old_ids is None:
                 cursor.execute('UPDATE tickets SET support_it_ids = ?, support_it_names = ? WHERE id = ? AND support_it_ids IS NULL', (s_ids, s_names, ticket_id))
             else:
@@ -566,7 +607,6 @@ def setup_bot_handlers(current_bot):
             try: current_bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
             except: pass
             
-            # BÀN PHÍM RỜI HỖ TRỢ CHO IT PHỤ
             markup_leave = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🏃‍♂️ Rời hỗ trợ", callback_data=f"leave_{ticket_id}"))
             try: current_bot.send_message(it_id, f"🚀 **[HỖ TRỢ] YÊU CẦU #{ticket_id}**\nĐã tham gia nhóm chat của ticket này. Bạn có thể chat ngay.", reply_markup=markup_leave, parse_mode="Markdown")
             except: pass
@@ -578,7 +618,6 @@ def setup_bot_handlers(current_bot):
             
             current_bot.answer_callback_query(call.id, url=f"https://t.me/{(current_bot.get_me()).username}?start=it_support")
 
-        # TÍNH NĂNG MỚI: RỜI HỖ TRỢ
         elif action == 'leave':
             cursor.execute("SELECT role FROM active_sessions WHERE user_id = ? AND ticket_id = ?", (it_id, ticket_id))
             role_chk = cursor.fetchone()
@@ -715,7 +754,7 @@ def config_watchdog():
         time.sleep(10) 
 
 if __name__ == '__main__':
-    print("🚀 Khởi động Hệ thống Bot IT (Chống kẹt lệnh + Rời Hỗ Trợ)...")
+    print("🚀 Khởi động Hệ thống Bot IT (Chống kẹt lệnh + Rời Hỗ Trợ + Giao thức Giải cứu)...")
     init_db()
     threading.Thread(target=config_watchdog, daemon=True).start()
     threading.Thread(target=auto_remind_it, daemon=True).start()
