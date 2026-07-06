@@ -51,6 +51,12 @@ def init_db():
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN it_msg_id INTEGER')
     except: pass
     
+    # Khởi tạo LAST_SYNCED_GROUP_ID nếu chưa có (để tránh bắn lại tin nhắn cũ khi vừa update code)
+    row_grp = cursor.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()
+    row_sync = cursor.execute("SELECT value FROM settings WHERE key='LAST_SYNCED_GROUP_ID'").fetchone()
+    if row_grp and not row_sync:
+        cursor.execute("INSERT INTO settings (key, value) VALUES ('LAST_SYNCED_GROUP_ID', ?)", (row_grp[0],))
+    
     conn.commit()
     conn.close()
 
@@ -89,6 +95,61 @@ def get_report_keyboard():
         types.InlineKeyboardButton("🔄 Đổi phòng ban", callback_data="changeDept")
     )
     return markup
+
+# =========================================================================
+# LUỒNG TỰ ĐỘNG BẮN LẠI TICKET KHI CẤU HÌNH NHÓM IT MỚI TRÊN WEB
+# =========================================================================
+def sync_tickets_to_new_group(current_bot, new_group_id):
+    if not current_bot or not new_group_id: return
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    row = cursor.execute("SELECT value FROM settings WHERE key='LAST_SYNCED_GROUP_ID'").fetchone()
+    last_synced = row[0].strip() if row else None
+    
+    # Nếu nhóm mới trùng với nhóm đã đồng bộ lần cuối -> Bỏ qua
+    if str(new_group_id) == last_synced:
+        conn.close()
+        return
+        
+    print(f"🔄 Phát hiện thay đổi Nhóm IT sang ID: {new_group_id}. Đang quét & bắn lại Ticket...")
+    try:
+        current_bot.send_message(new_group_id, "🔄 **HỆ THỐNG ĐANG ĐỒNG BỘ DỮ LIỆU SANG NHÓM MỚI...**\nĐang kiểm tra và chuyển tiếp các Ticket chưa hoàn thành.", parse_mode="Markdown")
+    except Exception as e:
+        print(f"❌ Không thể gửi thông báo vào nhóm mới {new_group_id} (Kiểm tra lại xem Bot đã được thêm vào nhóm chưa): {e}")
+        conn.close()
+        return
+
+    cursor.execute("SELECT id, status, user_name, dept, issue, it_name, support_it_names FROM tickets WHERE status != 'Hoàn thành' ORDER BY id ASC")
+    active_tickets = cursor.fetchall()
+    
+    synced_count = 0
+    for r in active_tickets:
+        t_id, status, user_name, dept, issue, it_name, support_it_names = r[0], r[1], r[2], r[3], r[4], r[5], r[6]
+        try:
+            if status == 'Mới':
+                text_new = f"🚨 **YÊU CẦU #{t_id} (ĐANG CHỜ TIẾP NHẬN)**\n👤 Khách: {user_name}\n🏢 Phòng: {dept}\n📝 Lỗi: {issue}"
+                markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Nhận việc (Làm chính)", callback_data=f"claim_{t_id}"))
+                sent_msg = current_bot.send_message(new_group_id, text_new, reply_markup=markup, parse_mode="Markdown")
+                cursor.execute("UPDATE tickets SET group_msg_id = ? WHERE id = ?", (sent_msg.message_id, t_id))
+                synced_count += 1
+            elif status == 'Đang xử lý':
+                sup_text = f"\n👨‍🔧 **Hỗ trợ:** {support_it_names}" if support_it_names else ""
+                text_proc = f"🚨 **YÊU CẦU #{t_id}**\n👤 Khách: {user_name}\n🏢 Phòng: {dept}\n📝 Lỗi: {issue}\n\n⏳ **Đang xử lý**\n👨‍💻 **IT Chính:** {it_name or 'N/A'}{sup_text}"
+                sent_msg = current_bot.send_message(new_group_id, text_proc, parse_mode="Markdown")
+                cursor.execute("UPDATE tickets SET group_msg_id = ? WHERE id = ?", (sent_msg.message_id, t_id))
+                synced_count += 1
+        except Exception as ex:
+            print(f"⚠️ Lỗi khi bắn Ticket #{t_id} vào nhóm mới: {ex}")
+
+    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('LAST_SYNCED_GROUP_ID', ?)", (str(new_group_id),))
+    conn.commit()
+    conn.close()
+    
+    try:
+        current_bot.send_message(new_group_id, f"✅ **ĐỒNG BỘ HOÀN TẤT!**\nĐã chuyển tiếp lại **{synced_count}** Ticket đang xử lý / chờ nhận vào nhóm mới này.", parse_mode="Markdown")
+    except: pass
+    print(f"✅ Đã đồng bộ thành công {synced_count} Ticket vào nhóm IT mới: {new_group_id}!")
 
 def sync_hubs_with_db():
     global bot, GROUP_IT_ID, is_running, ticket_last_status
@@ -231,49 +292,40 @@ def safe_edit_message(current_bot, chat_id, message_id, new_text, reply_markup=N
 def setup_bot_handlers(current_bot):
 
     # ==========================================
-    # CỬA THOÁT HIỂM: GIẢI CỨU TÀI KHOẢN BỊ KẸT
+    # CỬA THOÁT HIỂM: GIẢI CỨU TÀI KHOẢN BỊ KẸT (CÁ NHÂN HÓA)
     # ==========================================
     @current_bot.message_handler(commands=['giaicuu'])
     def rescue_command(message):
         if message.chat.type != 'private': return
+        user_id = message.from_user.id
+        
         conn = connect_db()
         cursor = conn.cursor()
         
-        # 1. Tìm những người (khách hàng, IT) đang kẹt trong Ticket ma
-        cursor.execute("SELECT user_id, role FROM active_sessions WHERE ticket_id NOT IN (SELECT id FROM tickets)")
-        stuck_users = cursor.fetchall()
+        cursor.execute('SELECT it_real_name FROM it_staff WHERE it_id = ?', (user_id,))
+        is_it = cursor.fetchone()
         
-        # 2. Dọn dẹp toàn bộ phiên chat rác (Ticket đã bị xoá)
+        cursor.execute("DELETE FROM active_sessions WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM user_states_db WHERE user_id = ?", (user_id,))
         cursor.execute("DELETE FROM active_sessions WHERE ticket_id NOT IN (SELECT id FROM tickets)")
-        
-        # 3. Xóa trạng thái bận của người gõ lệnh (phòng hờ)
-        cursor.execute("DELETE FROM active_sessions WHERE user_id = ?", (message.from_user.id,))
-        
-        # 4. Xóa các state đang điền dở dang
-        cursor.execute("DELETE FROM user_states_db WHERE user_id = ?", (message.from_user.id,))
         
         conn.commit()
         conn.close()
         
-        # 5. Gửi thông báo và trả lại bàn phím cho những người bị kẹt
-        for uid, role in stuck_users:
-            if uid != message.from_user.id:
-                try:
-                    if role == 'customer':
-                        current_bot.send_message(uid, "⚠️ **Hệ thống đã reset kết nối do sự cố (Ticket bị hủy hoặc mất dữ liệu).**\nBạn đã được trả về trạng thái tự do. Vui lòng sử dụng nút bên dưới để báo lại sự cố nếu cần thiết.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
-                    else:
-                        current_bot.send_message(uid, "⚠️ **Hệ thống đã reset kết nối do sự cố (Ticket bị hủy).**\nBạn đã được trả về trạng thái tự do.", parse_mode="Markdown")
-                except:
-                    pass
-        
-        text = (
-            "🚑 **GIAO THỨC GIẢI CỨU THÀNH CÔNG!**\n\n"
-            "✅ Hệ thống đã dọn dẹp các phiên chat ảo.\n"
-            "✅ Đã trả lại các nút báo lỗi cho khách hàng bị kẹt.\n"
-            "✅ Tài khoản của bạn đã được reset về trạng thái tự do.\n\n"
-            "👉 Bạn có thể tiếp tục nhận hoặc báo Ticket mới!"
-        )
-        current_bot.reply_to(message, text, parse_mode="Markdown")
+        if is_it:
+            text = (
+                "🚑 **GIẢI CỨU THÀNH CÔNG!**\n\n"
+                "✅ Tài khoản IT của bạn đã được reset.\n"
+                "👉 Bạn đã được trả về trạng thái tự do và có thể nhận việc mới!"
+            )
+            current_bot.reply_to(message, text, parse_mode="Markdown")
+        else:
+            text = (
+                "🚑 **GIẢI CỨU THÀNH CÔNG!**\n\n"
+                "✅ Kết nối của bạn đã được làm mới.\n"
+                "👉 Vui lòng sử dụng các nút bên dưới để tiếp tục!"
+            )
+            current_bot.reply_to(message, text, reply_markup=get_report_keyboard(), parse_mode="Markdown")
     # ==========================================
 
     @current_bot.message_handler(commands=['getid'])
@@ -747,14 +799,17 @@ def config_watchdog():
                 GROUP_IT_ID = new_group
                 bot = telebot.TeleBot(TOKEN)
                 setup_bot_handlers(bot)
+                sync_tickets_to_new_group(bot, GROUP_IT_ID)
                 
             elif new_group != GROUP_IT_ID:
                 GROUP_IT_ID = new_group
+                if bot:
+                    sync_tickets_to_new_group(bot, GROUP_IT_ID)
         except: pass
         time.sleep(10) 
 
 if __name__ == '__main__':
-    print("🚀 Khởi động Hệ thống Bot IT (Chống kẹt lệnh + Rời Hỗ Trợ + Giao thức Giải cứu)...")
+    print("🚀 Khởi động Hệ thống Bot IT (Chống kẹt lệnh + Rời Hỗ Trợ + Giao thức Giải cứu + Tự động Bắn lại Ticket khi Đổi nhóm)...")
     init_db()
     threading.Thread(target=config_watchdog, daemon=True).start()
     threading.Thread(target=auto_remind_it, daemon=True).start()
