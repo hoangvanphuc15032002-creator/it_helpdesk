@@ -35,7 +35,7 @@ def sync_tickets_to_new_group(current_bot, new_group_id):
                 text_new = f"🚨 **YÊU CẦU #{t_id} (ĐANG CHỜ TIẾP NHẬN)**\n👤 Khách: {user_name}\n🏢 Phòng: {dept}\n📝 Lỗi: {issue}"
                 markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Nhận việc (Làm chính)", callback_data=f"claim_{t_id}"))
                 sent_msg = current_bot.send_message(new_group_id, text_new, reply_markup=markup, parse_mode="Markdown")
-                try: current_bot.pin_chat_message(new_group_id, sent_msg.message_id, disable_notification=True)
+                try: current_bot.pin_chat_message(chat_id=new_group_id, message_id=sent_msg.message_id, disable_notification=True)
                 except: pass
                 cursor.execute("UPDATE tickets SET group_msg_id = ? WHERE id = ?", (sent_msg.message_id, t_id))
                 synced_count += 1
@@ -43,7 +43,7 @@ def sync_tickets_to_new_group(current_bot, new_group_id):
                 sup_text = f"\n👨‍🔧 **Hỗ trợ:** {support_it_names}" if support_it_names else ""
                 text_proc = f"🚨 **YÊU CẦU #{t_id}**\n👤 Khách: {user_name}\n🏢 Phòng: {dept}\n📝 Lỗi: {issue}\n\n⏳ **Đang xử lý**\n👨‍💻 **IT Chính:** {it_name or 'N/A'}{sup_text}"
                 sent_msg = current_bot.send_message(new_group_id, text_proc, parse_mode="Markdown")
-                try: current_bot.pin_chat_message(new_group_id, sent_msg.message_id, disable_notification=True)
+                try: current_bot.pin_chat_message(chat_id=new_group_id, message_id=sent_msg.message_id, disable_notification=True)
                 except: pass
                 cursor.execute("UPDATE tickets SET group_msg_id = ? WHERE id = ?", (sent_msg.message_id, t_id))
                 synced_count += 1
@@ -94,7 +94,7 @@ def sync_hubs_with_db():
                                 sup_text = f"\n👨‍🔧 **Hỗ trợ:** {row[6]}" if row[6] else ""
                                 text_fin = f"🚨 **YÊU CẦU #{t_id}**\n👤 Khách: {row[2]}\n🏢 Phòng: {row[3]}\n📝 Lỗi: {row[4]}\n\n✅ **Hoàn thành**\n👨‍💻 **IT Chính:** {row[5] or 'N/A'}{sup_text}"
                                 safe_edit_message(bot_config.bot, bot_config.GROUP_IT_ID, g_msg_id, text_fin)
-                                try: bot_config.bot.unpin_chat_message(bot_config.GROUP_IT_ID, g_msg_id)
+                                try: bot_config.bot.unpin_chat_message(chat_id=bot_config.GROUP_IT_ID, message_id=g_msg_id)
                                 except: pass
                             
                             cursor.execute("SELECT user_id, role, topic_id FROM active_sessions WHERE ticket_id = ?", (t_id,))
@@ -140,7 +140,16 @@ def sync_hubs_with_db():
                         elif status == 'Đang xử lý':
                             if g_msg_id:
                                 text_proc = f"🚨 **YÊU CẦU #{t_id}**\n👤 Khách: {row[2]}\n🏢 Phòng: {row[3]}\n📝 Lỗi: {row[4]}\n\n⏳ **Đang xử lý**\n👨‍💻 **IT Chính:** {row[5] or 'N/A'}"
-                                safe_edit_message(bot_config.bot, bot_config.GROUP_IT_ID, g_msg_id, text_proc)
+                                markup_jump = None
+                                if row[10] and row[8]: 
+                                    cursor.execute("SELECT workspace_group_id FROM it_staff WHERE it_id = ?", (row[8],))
+                                    ws_row = cursor.fetchone()
+                                    if ws_row and ws_row[0] and str(ws_row[0]).startswith('-100'):
+                                        clean_id = str(ws_row[0])[4:]
+                                        topic_url = f"https://t.me/c/{clean_id}/{row[10]}"
+                                        markup_jump = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(f"🚀 Đi tới Topic (Chỉ {row[5]} vào được)", url=topic_url))
+                                
+                                safe_edit_message(bot_config.bot, bot_config.GROUP_IT_ID, g_msg_id, text_proc, reply_markup=markup_jump)
                             
                         elif status == 'Mới':
                             if it_id_db and it_msg_id_db:
@@ -150,7 +159,7 @@ def sync_hubs_with_db():
                                 text_new = f"🚨 **YÊU CẦU #{t_id} (TRẢ LẠI / CHỜ NHẬN)**\n👤 Khách: {row[2]}\n🏢 Phòng: {row[3]}\n📝 Lỗi: {row[4]}"
                                 markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Nhận việc (Làm chính)", callback_data=f"claim_{t_id}"))
                                 safe_edit_message(bot_config.bot, bot_config.GROUP_IT_ID, g_msg_id, text_new, markup)
-                                try: bot_config.bot.pin_chat_message(bot_config.GROUP_IT_ID, g_msg_id, disable_notification=True)
+                                try: bot_config.bot.pin_chat_message(chat_id=bot_config.GROUP_IT_ID, message_id=g_msg_id, disable_notification=True)
                                 except: pass
                             
                             cursor.execute("SELECT user_id, role, topic_id FROM active_sessions WHERE ticket_id = ?", (t_id,))
@@ -263,7 +272,7 @@ def config_watchdog():
         time.sleep(10) 
 
 if __name__ == '__main__':
-    print("🚀 Khởi động Hệ thống Bot IT (Kiến trúc Module Doanh nghiệp - Đã fix Unpin & Topic Overlap)...")
+    print("🚀 Khởi động Hệ thống Bot IT (Giữ ghim Tracker & Xóa rác tự động)...")
     init_db()
     threading.Thread(target=config_watchdog, daemon=True).start()
     threading.Thread(target=auto_remind_it, daemon=True).start()
