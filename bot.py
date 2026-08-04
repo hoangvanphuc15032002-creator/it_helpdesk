@@ -54,19 +54,37 @@ def sync_tickets_to_new_group(current_bot, new_group_id):
     try: current_bot.send_message(new_group_id, f"✅ **ĐỒNG BỘ HOÀN TẤT!**\nChuyển tiếp lại **{synced_count}** Ticket.", parse_mode="Markdown")
     except: pass
 
+last_checked_update_ts = None
+
 def sync_hubs_with_db():
+    global last_checked_update_ts
     try:
         conn = connect_db(); cursor = conn.cursor()
         cursor.execute("SELECT id, status FROM tickets WHERE status != 'Hoàn thành'")
         for row in cursor.fetchall(): bot_config.ticket_last_status[row[0]] = row[1]
+        
+        row_ts = cursor.execute("SELECT value FROM settings WHERE key='LAST_TICKET_UPDATE'").fetchone()
+        last_checked_update_ts = row_ts[0] if row_ts else None
         conn.close()
     except: pass
     
     while bot_config.is_running:
         try:
-            time.sleep(5)
-            active_ids = [tid for tid, stat in bot_config.ticket_last_status.items() if stat != 'Hoàn thành']
+            time.sleep(3)
             conn = connect_db(); cursor = conn.cursor()
+            
+            # Kiểm tra mốc thời gian xem Web có thay đổi ticket nào không
+            row_ts = cursor.execute("SELECT value FROM settings WHERE key='LAST_TICKET_UPDATE'").fetchone()
+            current_ts = row_ts[0] if row_ts else None
+            
+            # Nếu thời gian không đổi và không có status nào cần retry thì bỏ qua truy vấn nặng
+            if current_ts == last_checked_update_ts:
+                conn.close()
+                continue
+                
+            last_checked_update_ts = current_ts
+
+            active_ids = [tid for tid, stat in bot_config.ticket_last_status.items() if stat != 'Hoàn thành']
             
             if active_ids:
                 placeholders = ",".join("?" for _ in active_ids)
@@ -226,6 +244,9 @@ def auto_remind_it():
                 if r[0] not in notified_tickets:
                     to_notify.append(r[0])
                     notified_tickets.add(r[0]) 
+            
+            if len(notified_tickets) > 1000:
+                notified_tickets.clear()
                     
             if to_notify:
                 ids = ", ".join([f"#{tid}" for tid in to_notify])

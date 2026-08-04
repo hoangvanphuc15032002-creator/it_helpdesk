@@ -17,6 +17,8 @@ def get_db_connection():
 def init_web_db():
     conn = get_db_connection()
     cursor = conn.cursor()
+    try: cursor.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+    except: pass
     cursor.execute('CREATE TABLE IF NOT EXISTS web_admins (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, role TEXT)')
     
     cursor.execute('CREATE TABLE IF NOT EXISTS departments (id INTEGER PRIMARY KEY, name TEXT UNIQUE, topic_id INTEGER)')
@@ -34,6 +36,8 @@ def init_web_db():
     except: pass 
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN support_it_names TEXT')
     except: pass 
+    try: cursor.execute('ALTER TABLE tickets ADD COLUMN completed_at TEXT')
+    except: pass
 
     admin_exist = cursor.execute("SELECT * FROM web_admins WHERE username='admin'").fetchone()
     if not admin_exist: cursor.execute("INSERT INTO web_admins (username, password, role) VALUES ('admin', '123456', 'superadmin')")
@@ -170,7 +174,7 @@ def api_save_settings():
     }
     
     try:
-        r = requests.post(test_url, json=test_payload)
+        r = requests.post(test_url, json=test_payload, timeout=5)
         resp_data = r.json()
         
         if not resp_data.get('ok'):
@@ -274,8 +278,19 @@ def api_update_ticket():
     status = data.get('status')
     
     conn = get_db_connection()
-    conn.execute("UPDATE tickets SET issue=?, it_id=?, it_name=?, support_it_names=?, status=? WHERE id=?", 
-                 (issue, it_id, it_name, sup_names, status, t_id))
+    current_t = conn.execute("SELECT completed_at FROM tickets WHERE id=?", (t_id,)).fetchone()
+    completed_at_val = current_t['completed_at'] if current_t and current_t['completed_at'] else None
+    
+    if status == 'Hoàn thành' and not completed_at_val:
+        time_offset_row = conn.execute("SELECT value FROM settings WHERE key='TIME_OFFSET'").fetchone()
+        offset_sec = int(time_offset_row['value']) if time_offset_row else 0
+        completed_at_val = (datetime.now() + timedelta(seconds=offset_sec)).strftime("%Y-%m-%d %H:%M:%S")
+    elif status != 'Hoàn thành':
+        completed_at_val = None
+
+    conn.execute("UPDATE tickets SET issue=?, it_id=?, it_name=?, support_it_names=?, status=?, completed_at=? WHERE id=?", 
+                 (issue, it_id, it_name, sup_names, status, completed_at_val, t_id))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('LAST_TICKET_UPDATE', ?)", (str(datetime.now().timestamp()),))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -286,6 +301,7 @@ def api_delete_ticket(t_id):
     if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
     conn = get_db_connection()
     conn.execute("DELETE FROM tickets WHERE id=?", (t_id,))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('LAST_TICKET_UPDATE', ?)", (str(datetime.now().timestamp()),))
     conn.commit()
     conn.close()
     return jsonify({"success": True})

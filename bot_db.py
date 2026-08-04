@@ -7,6 +7,8 @@ def connect_db():
 def init_db():
     conn = connect_db()
     cursor = conn.cursor()
+    try: cursor.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+    except: pass
 
     cursor.execute('CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, user_name TEXT, dept TEXT, issue TEXT, status TEXT, it_id INTEGER, it_name TEXT, created_at TEXT, rating INTEGER)')
     cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, name TEXT, dept TEXT)')
@@ -38,6 +40,8 @@ def init_db():
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN topic_id INTEGER')
     except: pass
     try: cursor.execute('ALTER TABLE active_sessions ADD COLUMN topic_id INTEGER')
+    except: pass
+    try: cursor.execute('ALTER TABLE tickets ADD COLUMN completed_at TEXT')
     except: pass
     
     row_grp = cursor.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()

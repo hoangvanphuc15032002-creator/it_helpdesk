@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["python", "run.py"]
+CMD ["python", "main.py"]

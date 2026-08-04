@@ -2,6 +2,18 @@ import subprocess
 import sys
 import time
 import socket
+import sqlite3
+
+def checkpoint_db():
+    try:
+        conn = sqlite3.connect('helpdesk.db', timeout=10)
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+        conn.close()
+        print("✅ Đã tự động dồn dữ liệu từ helpdesk.db-wal vào helpdesk.db!")
+    except Exception:
+        pass
+
+checkpoint_db()
 
 def get_lan_ip():
     try:

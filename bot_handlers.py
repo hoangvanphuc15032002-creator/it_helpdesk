@@ -1,10 +1,14 @@
 import telebot
 from telebot import types
 import sqlite3
+import time
 
 import bot_config
 from bot_db import connect_db, set_state, get_state, clear_state
 from bot_utils import get_adjusted_time, get_rating_keyboard, get_report_keyboard, safe_edit_message
+
+processed_msg_ids = set()
+user_last_ticket_time = {}
 
 def setup_bot_handlers(current_bot):
 
@@ -197,6 +201,14 @@ def setup_bot_handlers(current_bot):
         if message.text and message.text.startswith('/'): return
         sender_id = message.chat.id
         
+        # Chống Telegram retry trùng message_id
+        msg_key = (message.chat.id, message.message_id)
+        if msg_key in processed_msg_ids:
+            return
+        processed_msg_ids.add(msg_key)
+        if len(processed_msg_ids) > 2000:
+            processed_msg_ids.clear()
+
         step, temp_data = get_state(sender_id)
         
         if step:
@@ -255,21 +267,36 @@ def setup_bot_handlers(current_bot):
         if not user:
             if not step:
                 set_state(sender_id, 'ask_name')
-                current_bot.send_message(sender_id, "Cho biết **Họ tên** của bạn:")
+                current_bot.send_message(sender_id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
             elif step == 'ask_name':
-                set_state(sender_id, 'ask_dept', message.text)
+                if message.content_type != 'text' or not message.text or len(message.text.strip()) < 2:
+                    current_bot.send_message(sender_id, "⚠️ **Vui lòng nhập đúng Họ và Tên của bạn bằng văn bản!**")
+                    conn.close(); return
+                
+                user_name = message.text.strip()
+                set_state(sender_id, 'ask_dept', user_name)
                 
                 cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                 depts = cursor.fetchall()
                 if depts:
                     markup = types.InlineKeyboardMarkup(row_width=1) 
                     for d_id, d_name in depts: markup.add(types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}"))
-                    current_bot.send_message(sender_id, f"Chào **{message.text}**! Chọn **Phòng ban**:", reply_markup=markup, parse_mode="Markdown")
-                else: current_bot.send_message(sender_id, "🏢 Nhập tên **Phòng ban** của bạn:")
+                    current_bot.send_message(sender_id, f"Chào **{user_name}**! Vui lòng chọn **Phòng ban** của bạn bên dưới:", reply_markup=markup, parse_mode="Markdown")
+                else:
+                    current_bot.send_message(sender_id, f"Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
             elif step == 'ask_dept':
-                cursor.execute('INSERT INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, temp_data, message.text))
-                conn.commit(); clear_state(sender_id)
-                current_bot.send_message(sender_id, "✅ Đã lưu!", reply_markup=get_report_keyboard())
+                cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
+                depts = cursor.fetchall()
+                if depts:
+                    markup = types.InlineKeyboardMarkup(row_width=1) 
+                    for d_id, d_name in depts: markup.add(types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}"))
+                    current_bot.send_message(sender_id, "⚠️ **VUI LÒNG CHỌN PHÒNG BAN!**\n\n👉 Bạn hãy nhấn vào một trong các nút chọn **Phòng ban** bên dưới. Không tự gõ văn bản ở bước này!", reply_markup=markup, parse_mode="Markdown")
+                else:
+                    dept_text = message.text.strip() if message.text else "Khác"
+                    user_name = temp_data if (temp_data and temp_data != 'None') else (message.from_user.full_name or f"Khách #{sender_id}")
+                    cursor.execute('INSERT INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_text))
+                    conn.commit(); clear_state(sender_id)
+                    current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_text}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
             conn.close(); return
 
         cursor.execute("SELECT id FROM tickets WHERE user_id = ? AND status = 'Mới'", (sender_id,))
@@ -279,8 +306,15 @@ def setup_bot_handlers(current_bot):
             conn.close(); return
             
         if step != 'waiting_for_issue':
-            current_bot.send_message(sender_id, "👇 Nhấn nút báo sự cố:", reply_markup=get_report_keyboard()); conn.close(); return
+            current_bot.send_message(sender_id, "⚠️ **Vui lòng nhấn nút '🚨 Báo sự cố mới' bên dưới trước khi mô tả lỗi!**", reply_markup=get_report_keyboard(), parse_mode="Markdown"); conn.close(); return
             
+        now = time.time()
+        if sender_id in user_last_ticket_time and now - user_last_ticket_time[sender_id] < 3:
+            conn.close(); return
+        user_last_ticket_time[sender_id] = now
+            
+        clear_state(sender_id)
+
         if temp_data:
             try: current_bot.edit_message_reply_markup(chat_id=sender_id, message_id=int(temp_data), reply_markup=None)
             except: pass
@@ -288,7 +322,7 @@ def setup_bot_handlers(current_bot):
         issue_text = message.text or message.caption or "Gửi đính kèm"
         cursor.execute('INSERT INTO tickets (user_id, user_name, dept, issue, status, created_at) VALUES (?, ?, ?, ?, ?, ?)', (sender_id, user[0], user[1], issue_text, 'Mới', get_adjusted_time().strftime("%Y-%m-%d %H:%M:%S")))
         ticket_id = cursor.lastrowid
-        conn.commit(); clear_state(sender_id)
+        conn.commit()
         
         current_bot.send_message(sender_id, "✅ **Đã gửi IT.** Vui lòng đợi.", parse_mode="Markdown")
         msg_to_it = f"🚨 **YÊU CẦU MỚI!**\n🆔 Mã: #{ticket_id}\n👤 Khách: {user[0]}\n🏢 Phòng: {user[1]}\n📝 Nội dung: {issue_text}"
@@ -354,10 +388,11 @@ def setup_bot_handlers(current_bot):
                 d_row = cursor.fetchone()
                 if d_row:
                     dept_name = d_row[0]
-                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, temp_data, dept_name))
+                    user_name = temp_data if (temp_data and temp_data != 'None') else (call.from_user.full_name or f"Khách #{sender_id}")
+                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
                     conn.commit()
                     clear_state(sender_id)
-                    current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{temp_data}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                    current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
                 conn.close()
             return
 
@@ -658,7 +693,8 @@ def setup_bot_handlers(current_bot):
             participants = cursor.fetchall()
             cursor.execute("DELETE FROM active_sessions WHERE ticket_id = ?", (ticket_id,))
 
-            cursor.execute("UPDATE tickets SET status = 'Hoàn thành' WHERE id = ?", (ticket_id,))
+            completed_time = get_adjusted_time().strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute("UPDATE tickets SET status = 'Hoàn thành', completed_at = ? WHERE id = ?", (completed_time, ticket_id))
             conn.commit()
             bot_config.ticket_last_status[int(ticket_id)] = 'Hoàn thành'
 

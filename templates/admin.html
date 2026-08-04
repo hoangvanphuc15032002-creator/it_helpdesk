@@ -104,9 +104,14 @@
                     </div>
                 </div>
 
-                <button onclick="exportExcel()" class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-emerald-100 transition shadow-sm flex items-center">
-                    <i class="fa-solid fa-download mr-1"></i> Excel
-                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="manualRefresh()" class="bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-indigo-100 transition shadow-sm flex items-center gap-1">
+                        <i class="fa-solid fa-rotate" id="refreshSpinIcon"></i> Làm mới
+                    </button>
+                    <button onclick="exportExcel()" class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-emerald-100 transition shadow-sm flex items-center">
+                        <i class="fa-solid fa-download mr-1"></i> Excel
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -183,8 +188,14 @@
                 {% if session.role != 'manager' %}
                 <section id="tab-depts" class="admin-tab hidden tab-content">
                     <div class="modern-card overflow-hidden flex flex-col h-[600px]">
-                        <div class="p-5 border-b bg-slate-50/50 font-bold text-slate-800 flex items-center justify-between">
-                            <span><i class="fa-solid fa-building-user text-indigo-500 mr-2"></i>Danh Sách Phòng Ban Hệ Thống</span>
+                        <div class="p-5 border-b bg-slate-50/50 font-bold text-slate-800 flex flex-wrap items-center justify-between gap-4">
+                            <div class="flex items-center gap-3">
+                                <span><i class="fa-solid fa-building-user text-indigo-500 mr-2"></i>Danh Sách Phòng Ban Hệ Thống</span>
+                                <div class="relative">
+                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                                    <input type="text" id="deptSearchInput" onkeyup="filterDeptsTable()" placeholder="Tìm phòng ban..." class="w-48 bg-white border border-slate-200 text-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                                </div>
+                            </div>
                             <button onclick="addDept()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg hover:bg-indigo-700 transition">
                                 <i class="fa-solid fa-plus mr-1"></i> Thêm Phòng Mới
                             </button>
@@ -199,11 +210,11 @@
                                         <th class="p-4 text-right">Thao tác</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-slate-100 bg-white">
+                                <tbody id="deptsTableBody" class="divide-y divide-slate-100 bg-white">
                                     {% for d in depts %}
-                                    <tr class="hover:bg-slate-50 transition-colors group">
+                                    <tr class="dept-row hover:bg-slate-50 transition-colors group">
                                         <td class="p-4 font-bold text-slate-400">#{{ d.id }}</td>
-                                        <td class="p-4 font-bold text-slate-700">{{ d.name }}</td>
+                                        <td class="p-4 font-bold text-slate-700 dept-name">{{ d.name }}</td>
                                         <td class="p-4 text-center">
                                             {% if d.topic_id %}
                                             <span class="text-[10px] font-mono bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">ID: {{ d.topic_id }}</span>
@@ -226,50 +237,69 @@
 
                 <section id="tab-users" class="admin-tab hidden tab-content">
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 h-[600px]">
+                        <!-- IT Staff Card -->
                         <div class="modern-card flex flex-col overflow-hidden">
-                            <div class="p-5 border-b bg-slate-50/50 font-bold text-slate-800 flex items-center justify-between">
-                                Biệt đội IT Phụ trách
-                                <span class="text-[10px] text-slate-400 font-normal">Sửa tên/SĐT rồi bấm Lưu</span>
+                            <div class="p-5 border-b bg-slate-50/50 font-bold text-slate-800 flex items-center justify-between gap-4">
+                                <span><i class="fa-solid fa-user-shield text-indigo-500 mr-2"></i>Biệt đội IT Phụ trách</span>
+                                <div class="relative">
+                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                                    <input type="text" id="itSearchInput" onkeyup="filterITList()" placeholder="Tìm tên IT, SĐT..." class="w-44 bg-white border border-slate-200 text-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                                </div>
                             </div>
-                            <div class="overflow-y-auto p-4 space-y-3">
+                            <div id="itListContainer" class="overflow-y-auto p-4 space-y-3">
                                 {% for it in it_staff %}
-                                <div class="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-transparent hover:border-indigo-100 transition-all group">
+                                <div class="it-item flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-200 transition-all" data-id="{{ it.it_id }}" data-name="{{ it.it_real_name }}" data-phone="{{ it.it_phone or '' }}">
                                     <div class="w-full">
-                                        <input type="text" id="itn-{{ it.it_id }}" value="{{ it.it_real_name }}" class="font-bold text-slate-700 bg-transparent border-b border-transparent focus:border-indigo-500 outline-none w-3/4">
+                                        <div class="font-bold text-slate-800 flex items-center gap-2">
+                                            <span>{{ it.it_real_name }}</span>
+                                            <span class="text-[10px] font-bold text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded">ID: {{ it.it_id }}</span>
+                                        </div>
                                         <div class="text-[11px] text-indigo-600 font-bold flex items-center gap-1 mt-1">
                                             <i class="fa-solid fa-phone text-[10px]"></i>
-                                            <input type="text" id="itp-{{ it.it_id }}" value="{{ it.it_phone or '' }}" class="bg-transparent border-b border-transparent focus:border-indigo-500 outline-none placeholder-indigo-300 w-1/2" placeholder="SĐT...">
+                                            <span>{{ it.it_phone or 'Chưa có SĐT' }}</span>
                                         </div>
                                     </div>
-                                    <div class="flex flex-col items-end gap-2 shrink-0 ml-2">
-                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {{ it.it_id }}</span>
-                                        <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-3">
-                                            <button onclick="saveIT({{ it.it_id }})" class="text-emerald-500 hover:text-emerald-700" title="Lưu thay đổi"><i class="fa-solid fa-save text-base"></i></button>
-                                            <button onclick="deleteIT({{ it.it_id }})" class="text-rose-400 hover:text-rose-600" title="Xóa IT này"><i class="fa-solid fa-trash text-base"></i></button>
-                                        </div>
+                                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                                        <button onclick="openEditITModal('{{ it.it_id }}', '{{ it.it_real_name|e }}', '{{ it.it_phone or ''|e }}')" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-600 hover:text-white transition flex items-center gap-1 shadow-sm">
+                                            <i class="fa-solid fa-pen-to-square"></i> Sửa
+                                        </button>
+                                        <button onclick="deleteIT({{ it.it_id }})" class="px-2.5 py-1.5 bg-slate-100 text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-500 hover:text-white transition" title="Xóa IT này">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
                                     </div>
                                 </div>
                                 {% endfor %}
                             </div>
                         </div>
+
+                        <!-- Users Card -->
                         <div class="modern-card flex flex-col overflow-hidden">
-                            <div class="p-5 border-b bg-slate-50/50 font-bold text-slate-800 flex items-center justify-between">
-                                Danh sách Khách hàng
-                                <span class="text-[10px] text-slate-400 font-normal">Sửa tên/Phòng rồi bấm Lưu</span>
+                            <div class="p-5 border-b bg-slate-50/50 font-bold text-slate-800 flex items-center justify-between gap-4">
+                                <span><i class="fa-solid fa-users text-emerald-500 mr-2"></i>Danh sách Khách hàng</span>
+                                <div class="relative">
+                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                                    <input type="text" id="userSearchInput" onkeyup="filterUserList()" placeholder="Tìm tên, phòng..." class="w-44 bg-white border border-slate-200 text-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                                </div>
                             </div>
-                            <div class="overflow-y-auto p-4 space-y-3">
+                            <div id="userListContainer" class="overflow-y-auto p-4 space-y-3">
                                 {% for u in users %}
-                                <div class="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-transparent hover:border-emerald-100 transition-all group">
+                                <div class="user-item flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-emerald-200 transition-all" data-id="{{ u.user_id }}" data-name="{{ u.name }}" data-dept="{{ u.dept }}">
                                     <div class="w-full">
-                                        <input type="text" id="un-{{ u.user_id }}" value="{{ u.name }}" class="font-bold text-slate-700 bg-transparent border-b border-transparent focus:border-emerald-500 outline-none w-3/4">
-                                        <div class="text-[10px] text-slate-400 mt-1">{{ u.user_id }}</div>
-                                    </div>
-                                    <div class="flex flex-col items-end gap-2 shrink-0 ml-2">
-                                        <input type="text" id="ud-{{ u.user_id }}" value="{{ u.dept }}" class="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-1 rounded-lg uppercase tracking-tight outline-none w-24 text-right border border-transparent focus:border-emerald-300">
-                                        <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-3 mt-1">
-                                            <button onclick="saveUser({{ u.user_id }})" class="text-emerald-500 hover:text-emerald-700" title="Lưu thay đổi"><i class="fa-solid fa-save text-base"></i></button>
-                                            <button onclick="deleteUser({{ u.user_id }})" class="text-rose-400 hover:text-rose-600" title="Xóa Khách này"><i class="fa-solid fa-trash text-base"></i></button>
+                                        <div class="font-bold text-slate-800 flex items-center gap-2">
+                                            <span>{{ u.name }}</span>
+                                            <span class="text-[10px] font-bold text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded">{{ u.user_id }}</span>
                                         </div>
+                                        <div class="mt-1">
+                                            <span class="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-lg uppercase tracking-tight border border-emerald-100">{{ u.dept }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                                        <button onclick="openEditUserModal('{{ u.user_id }}', '{{ u.name|e }}', '{{ u.dept|e }}')" class="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold hover:bg-emerald-600 hover:text-white transition flex items-center gap-1 shadow-sm">
+                                            <i class="fa-solid fa-pen-to-square"></i> Sửa
+                                        </button>
+                                        <button onclick="deleteUser({{ u.user_id }})" class="px-2.5 py-1.5 bg-slate-100 text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-500 hover:text-white transition" title="Xóa Khách này">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
                                     </div>
                                 </div>
                                 {% endfor %}
@@ -431,6 +461,62 @@
         </div>
     </div>
 
+    <!-- Modal Sửa IT -->
+    <div id="editITModal" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center backdrop-blur-sm transition-all duration-300">
+        <div class="bg-white p-8 rounded-3xl w-[450px] shadow-2xl relative transform transition-all scale-95 opacity-0" id="editITModalContent">
+            <h3 class="text-xl font-black mb-6 uppercase text-slate-800 border-b pb-3 flex items-center">
+                <i class="fa-solid fa-user-gear text-indigo-600 mr-2"></i>Sửa IT #<span id="editITIdDisplay"></span>
+            </h3>
+            <input type="hidden" id="editITId">
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Họ và Tên IT</label>
+                    <input type="text" id="editITName" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Số điện thoại</label>
+                    <input type="text" id="editITPhone" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0901234567...">
+                </div>
+            </div>
+            <div class="mt-8 flex justify-end gap-3">
+                <button onclick="closeEditITModal()" class="px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Hủy</button>
+                <button onclick="submitEditIT()" class="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition flex items-center">
+                    <i class="fa-solid fa-floppy-disk mr-2"></i> Lưu thay đổi
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Sửa Khách Hàng -->
+    <div id="editUserModal" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center backdrop-blur-sm transition-all duration-300">
+        <div class="bg-white p-8 rounded-3xl w-[450px] shadow-2xl relative transform transition-all scale-95 opacity-0" id="editUserModalContent">
+            <h3 class="text-xl font-black mb-6 uppercase text-slate-800 border-b pb-3 flex items-center">
+                <i class="fa-solid fa-user-pen text-emerald-600 mr-2"></i>Sửa Khách Hàng
+            </h3>
+            <input type="hidden" id="editUserId">
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">ID Telegram</label>
+                    <input type="text" id="editUserIdDisplay" readonly class="w-full border border-slate-100 bg-slate-50 p-3 rounded-xl text-xs font-mono font-bold text-slate-400 outline-none">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Họ và Tên Khách</label>
+                    <input type="text" id="editUserName" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Phòng Ban</label>
+                    <select id="editUserDept" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"></select>
+                </div>
+            </div>
+            <div class="mt-8 flex justify-end gap-3">
+                <button onclick="closeEditUserModal()" class="px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Hủy</button>
+                <button onclick="submitEditUser()" class="px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 transition flex items-center">
+                    <i class="fa-solid fa-floppy-disk mr-2"></i> Lưu thay đổi
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script id="tickets-data" type="application/json">{{ tickets_json | safe }}</script>
     <script id="departments-data" type="application/json">{{ departments_json | safe }}</script>
 
@@ -521,12 +607,16 @@
             {% if session.role in ['superadmin', 'manager'] %}
             applyFilters();
             {% endif %}
-            
-            fetch('/api/data').then(res => res.json()).then(data => {});
-            setInterval(fetchRealtimeData, 5000);
 
             startLiveClock();
         };
+
+        async function manualRefresh() {
+            const icon = document.getElementById('refreshSpinIcon');
+            if (icon) icon.classList.add('fa-spin');
+            await fetchRealtimeData(true);
+            if (icon) setTimeout(() => icon.classList.remove('fa-spin'), 500);
+        }
 
         function startLiveClock() {
             let botTimeParts = null;
@@ -554,11 +644,11 @@
             document.getElementById('cfgCustomTime').value = now.toISOString().slice(0, 16);
         }
 
-        async function fetchRealtimeData() {
+        async function fetchRealtimeData(forceRefresh = false) {
             try {
                 const res = await fetch('/api/data');
                 const data = await res.json();
-                if (JSON.stringify(data.tickets) !== JSON.stringify(allTickets)) {
+                if (forceRefresh || JSON.stringify(data.tickets) !== JSON.stringify(allTickets)) {
                     allTickets = data.tickets; 
                     {% if session.role in ['superadmin', 'manager'] %}
                     applyFilters();
@@ -657,6 +747,8 @@
                     </div>`;
                 {% endif %}
 
+                let timeStr = `<span class="text-[10px] text-slate-400 font-bold block mb-1 group-hover:hidden">Tạo: ${t.created_at.substring(8, 16)}${t.completed_at ? `<br><span class="text-emerald-600 font-black">Xong: ${t.completed_at.substring(8, 16)}</span>` : ''}</span>`;
+
                 tbody.innerHTML += `
                     <tr class="hover:bg-slate-50 transition-colors group">
                         <td class="p-4 font-bold text-indigo-600">#${t.id}</td>
@@ -666,7 +758,7 @@
                         <td class="p-4 text-center leading-tight">${mainItStr}${supItStr}</td>
                         <td class="p-4 text-center">${renderStars(t.rating)}</td>
                         <td class="p-4 text-right">
-                            <span class="text-[10px] text-slate-400 font-bold block mb-1 group-hover:hidden">${t.created_at.substring(8, 16)}</span>
+                            ${timeStr}
                             ${actionBtns}
                         </td>
                     </tr>`;
@@ -729,11 +821,145 @@
             }
         }
 
-        async function saveIT(id) {
-            const data = {id, name: document.getElementById('itn-'+id).value, phone: document.getElementById('itp-'+id).value};
-            const res = await fetch('/api/update_it', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+        function filterDeptsTable() {
+            const q = (document.getElementById('deptSearchInput').value || '').toLowerCase().trim();
+            document.querySelectorAll('#deptsTableBody .dept-row').forEach(row => {
+                const name = row.querySelector('.dept-name').innerText.toLowerCase();
+                row.style.display = name.includes(q) ? '' : 'none';
+            });
+        }
+
+        function filterITList() {
+            const q = (document.getElementById('itSearchInput').value || '').toLowerCase().trim();
+            document.querySelectorAll('#itListContainer .it-item').forEach(item => {
+                const name = (item.dataset.name || '').toLowerCase();
+                const phone = (item.dataset.phone || '').toLowerCase();
+                const id = (item.dataset.id || '').toString();
+                item.style.display = (name.includes(q) || phone.includes(q) || id.includes(q)) ? 'flex' : 'none';
+            });
+        }
+
+        function filterUserList() {
+            const q = (document.getElementById('userSearchInput').value || '').toLowerCase().trim();
+            document.querySelectorAll('#userListContainer .user-item').forEach(item => {
+                const name = (item.dataset.name || '').toLowerCase();
+                const dept = (item.dataset.dept || '').toLowerCase();
+                const id = (item.dataset.id || '').toString();
+                item.style.display = (name.includes(q) || dept.includes(q) || id.includes(q)) ? 'flex' : 'none';
+            });
+        }
+
+        function openEditITModal(btn, argName, argPhone) {
+            let id, name, phone;
+            if (typeof btn === 'object' && btn !== null) {
+                const item = btn.closest('.it-item');
+                id = item.dataset.id;
+                name = item.dataset.name;
+                phone = item.dataset.phone;
+            } else {
+                id = btn; name = argName; phone = argPhone;
+            }
+            document.getElementById('editITId').value = id;
+            document.getElementById('editITIdDisplay').innerText = id;
+            document.getElementById('editITName').value = name;
+            document.getElementById('editITPhone').value = phone;
+
+            const modal = document.getElementById('editITModal');
+            const content = document.getElementById('editITModalContent');
+            modal.classList.remove('hidden');
+            setTimeout(() => { content.classList.remove('scale-95', 'opacity-0'); }, 10);
+        }
+
+        function closeEditITModal() {
+            const modal = document.getElementById('editITModal');
+            const content = document.getElementById('editITModalContent');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        }
+
+        async function submitEditIT() {
+            const id = parseInt(document.getElementById('editITId').value);
+            const name = document.getElementById('editITName').value.trim();
+            const phone = document.getElementById('editITPhone').value.trim();
+
+            if (!name) return alert("Vui lòng nhập tên IT!");
+
+            const res = await fetch('/api/update_it', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id, name, phone})
+            });
             const resData = await res.json();
-            if(resData.success) alert("✅ Đã cập nhật thông tin IT!"); else alert(resData.error);
+            if (resData.success) {
+                alert("✅ Đã cập nhật thông tin IT!");
+                closeEditITModal();
+                location.reload();
+            } else {
+                alert("❌ Lỗi: " + resData.error);
+            }
+        }
+
+        function openEditUserModal(btn, argName, argDept) {
+            let id, name, currentDept;
+            if (typeof btn === 'object' && btn !== null) {
+                const item = btn.closest('.user-item');
+                id = item.dataset.id;
+                name = item.dataset.name;
+                currentDept = item.dataset.dept;
+            } else {
+                id = btn; name = argName; currentDept = argDept;
+            }
+            document.getElementById('editUserId').value = id;
+            document.getElementById('editUserIdDisplay').value = id;
+            document.getElementById('editUserName').value = name;
+
+            const deptSel = document.getElementById('editUserDept');
+            deptSel.innerHTML = '';
+            
+            let matchFound = false;
+            dbDepts.forEach(d => {
+                const opt = new Option(d, d);
+                if (d === currentDept) matchFound = true;
+                deptSel.appendChild(opt);
+            });
+            if (!matchFound && currentDept) {
+                deptSel.appendChild(new Option(currentDept, currentDept));
+            }
+            deptSel.value = currentDept;
+
+            const modal = document.getElementById('editUserModal');
+            const content = document.getElementById('editUserModalContent');
+            modal.classList.remove('hidden');
+            setTimeout(() => { content.classList.remove('scale-95', 'opacity-0'); }, 10);
+        }
+
+        function closeEditUserModal() {
+            const modal = document.getElementById('editUserModal');
+            const content = document.getElementById('editUserModalContent');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        }
+
+        async function submitEditUser() {
+            const id = parseInt(document.getElementById('editUserId').value);
+            const name = document.getElementById('editUserName').value.trim();
+            const dept = document.getElementById('editUserDept').value.trim();
+
+            if (!name) return alert("Vui lòng nhập tên Khách hàng!");
+
+            const res = await fetch('/api/update_user', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id, name, dept})
+            });
+            const resData = await res.json();
+            if (resData.success) {
+                alert("✅ Đã cập nhật thông tin Khách hàng!");
+                closeEditUserModal();
+                location.reload();
+            } else {
+                alert("❌ Lỗi: " + resData.error);
+            }
         }
 
         async function deleteIT(id) {
@@ -742,13 +968,6 @@
                 const resData = await res.json();
                 if(resData.success) location.reload(); else alert(resData.error);
             }
-        }
-
-        async function saveUser(id) {
-            const data = {id, name: document.getElementById('un-'+id).value, dept: document.getElementById('ud-'+id).value};
-            const res = await fetch('/api/update_user', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
-            const resData = await res.json();
-            if(resData.success) alert("✅ Đã cập nhật Khách hàng!"); else alert(resData.error);
         }
 
         async function deleteUser(id) {
@@ -898,8 +1117,9 @@
                 "Trạng thái": t.status, 
                 "IT Chính": t.it_name || "Chờ nhận", 
                 "IT Hỗ Trợ": t.support_it_names || "",
-                "Sao": t.rating || 0, 
-                "Thời gian": t.created_at 
+                "Đánh giá": t.rating || 0, 
+                "Thời gian tạo": t.created_at,
+                "Thời gian xong": t.completed_at || "Chưa xong"
             })));
             
             const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Data");
