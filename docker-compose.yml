@@ -9,7 +9,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./helpdesk.db:/app/helpdesk.db
+      - .:/app
     restart: always
     environment:
       - PYTHONUNBUFFERED=1
@@ -20,7 +20,7 @@ services:
     container_name: it_helpdesk_bot
     command: python bot.py
     volumes:
-      - ./helpdesk.db:/app/helpdesk.db
+      - .:/app
     restart: always
     environment:
       - PYTHONUNBUFFERED=1
