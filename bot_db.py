@@ -1,7 +1,12 @@
 import sqlite3
 
 def connect_db():
-    conn = sqlite3.connect('helpdesk.db', timeout=20, check_same_thread=False)
+    conn = sqlite3.connect('helpdesk.db', timeout=30, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
+    except:
+        pass
     return conn
 
 def init_db():
@@ -16,9 +21,20 @@ def init_db():
     cursor.execute('CREATE TABLE IF NOT EXISTS departments (id INTEGER PRIMARY KEY, name TEXT UNIQUE, topic_id INTEGER)')
     cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
     
-    cursor.execute('CREATE TABLE IF NOT EXISTS active_sessions (user_id INTEGER PRIMARY KEY, ticket_id INTEGER, role TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS active_sessions (user_id INTEGER, ticket_id INTEGER, role TEXT, topic_id INTEGER, PRIMARY KEY (user_id, ticket_id))')
     cursor.execute('CREATE TABLE IF NOT EXISTS user_states_db (user_id INTEGER PRIMARY KEY, step TEXT, temp_data TEXT)')
     
+    try:
+        info = cursor.execute("PRAGMA table_info(active_sessions)").fetchall()
+        pk_cols = [row[1] for row in info if row[5] > 0]
+        if pk_cols == ['user_id']:
+            cursor.execute("CREATE TABLE active_sessions_new (user_id INTEGER, ticket_id INTEGER, role TEXT, topic_id INTEGER, PRIMARY KEY (user_id, ticket_id))")
+            cursor.execute("INSERT OR IGNORE INTO active_sessions_new (user_id, ticket_id, role, topic_id) SELECT user_id, ticket_id, role, topic_id FROM active_sessions")
+            cursor.execute("DROP TABLE active_sessions")
+            cursor.execute("ALTER TABLE active_sessions_new RENAME TO active_sessions")
+    except Exception as e:
+        print("Migration active_sessions exception:", e)
+
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN rating INTEGER')
     except: pass
     try: cursor.execute('ALTER TABLE it_staff ADD COLUMN it_phone TEXT')
@@ -44,6 +60,12 @@ def init_db():
     try: cursor.execute('ALTER TABLE tickets ADD COLUMN completed_at TEXT')
     except: pass
     
+    # Auto cleanup orphaned sessions
+    try:
+        cursor.execute("DELETE FROM active_sessions WHERE ticket_id NOT IN (SELECT id FROM tickets WHERE status != 'Hoàn thành')")
+    except:
+        pass
+
     row_grp = cursor.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()
     row_sync = cursor.execute("SELECT value FROM settings WHERE key='LAST_SYNCED_GROUP_ID'").fetchone()
     if row_grp and not row_sync:
@@ -54,28 +76,38 @@ def init_db():
 
 def set_state(uid, step, temp_data=None):
     conn = connect_db()
-    conn.execute("INSERT OR REPLACE INTO user_states_db (user_id, step, temp_data) VALUES (?, ?, ?)", (uid, step, temp_data))
-    conn.commit(); conn.close()
+    try:
+        conn.execute("INSERT OR REPLACE INTO user_states_db (user_id, step, temp_data) VALUES (?, ?, ?)", (uid, step, temp_data))
+        conn.commit()
+    finally:
+        conn.close()
 
 def get_state(uid):
     conn = connect_db()
-    row = conn.execute("SELECT step, temp_data FROM user_states_db WHERE user_id = ?", (uid,)).fetchone()
-    conn.close()
-    return row if row else (None, None)
+    try:
+        row = conn.execute("SELECT step, temp_data FROM user_states_db WHERE user_id = ?", (uid,)).fetchone()
+        return row if row else (None, None)
+    finally:
+        conn.close()
 
 def clear_state(uid):
     conn = connect_db()
-    conn.execute("DELETE FROM user_states_db WHERE user_id = ?", (uid,))
-    conn.commit(); conn.close()
+    try:
+        conn.execute("DELETE FROM user_states_db WHERE user_id = ?", (uid,))
+        conn.commit()
+    finally:
+        conn.close()
 
 def get_config_from_db():
     conn = connect_db()
-    cursor = conn.cursor()
-    token_row = cursor.execute("SELECT value FROM settings WHERE key='BOT_TOKEN'").fetchone()
-    group_row = cursor.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()
-    offset_row = cursor.execute("SELECT value FROM settings WHERE key='TIME_OFFSET'").fetchone()
-    conn.close()
-    t = token_row[0].strip() if token_row else None
-    g = group_row[0].strip() if group_row else None
-    o = int(offset_row[0]) if offset_row else 0
-    return t, g, o
+    try:
+        cursor = conn.cursor()
+        token_row = cursor.execute("SELECT value FROM settings WHERE key='BOT_TOKEN'").fetchone()
+        group_row = cursor.execute("SELECT value FROM settings WHERE key='GROUP_IT_ID'").fetchone()
+        offset_row = cursor.execute("SELECT value FROM settings WHERE key='TIME_OFFSET'").fetchone()
+        t = token_row[0].strip() if token_row else None
+        g = group_row[0].strip() if group_row else None
+        o = int(offset_row[0]) if offset_row else 0
+        return t, g, o
+    finally:
+        conn.close()

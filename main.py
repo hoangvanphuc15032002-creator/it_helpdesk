@@ -6,7 +6,9 @@ import sqlite3
 
 def checkpoint_db():
     try:
-        conn = sqlite3.connect('helpdesk.db', timeout=10)
+        conn = sqlite3.connect('helpdesk.db', timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
         conn.close()
         print("✅ Đã tự động dồn dữ liệu từ helpdesk.db-wal vào helpdesk.db!")

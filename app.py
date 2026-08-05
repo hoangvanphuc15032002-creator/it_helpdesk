@@ -10,7 +10,12 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'Sieu_Bao_Mat_Helpdesk_2026')
 
 def get_db_connection():
-    conn = sqlite3.connect('helpdesk.db', timeout=20, check_same_thread=False)
+    conn = sqlite3.connect('helpdesk.db', timeout=30, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
+    except:
+        pass
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -300,10 +305,13 @@ def api_update_ticket():
 def api_delete_ticket(t_id):
     if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
     conn = get_db_connection()
-    conn.execute("DELETE FROM tickets WHERE id=?", (t_id,))
-    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('LAST_TICKET_UPDATE', ?)", (str(datetime.now().timestamp()),))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("DELETE FROM active_sessions WHERE ticket_id=?", (t_id,))
+        conn.execute("DELETE FROM tickets WHERE id=?", (t_id,))
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('LAST_TICKET_UPDATE', ?)", (str(datetime.now().timestamp()),))
+        conn.commit()
+    finally:
+        conn.close()
     return jsonify({"success": True})
 
 @app.route('/api/update_it', methods=['POST'])
