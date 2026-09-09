@@ -47,11 +47,21 @@ try:
     print("=" * 50)
     print("❌ (Để tắt toàn bộ hệ thống: Bấm tổ hợp phím Ctrl + C)\n")
 
-    bot_process.wait()
-    web_process.wait()
+    while True:
+        time.sleep(3)
+        if bot_process.poll() is not None:
+            print("⚠️ Phát hiện Bot Telegram bị tắt! Đang tự động khởi động lại...")
+            bot_process = subprocess.Popen([sys.executable, 'bot.py'])
+        if web_process.poll() is not None:
+            print("⚠️ Phát hiện Web Dashboard bị tắt! Đang tự động khởi động lại...")
+            web_process = subprocess.Popen([sys.executable, 'app.py'])
 
 except KeyboardInterrupt:
     print("\n🛑 Đang dọn dẹp và tắt hệ thống...")
-    bot_process.terminate()
-    web_process.terminate()
+    try:
+        if bot_process.poll() is None: bot_process.terminate()
+    except Exception: pass
+    try:
+        if web_process.poll() is None: web_process.terminate()
+    except Exception: pass
     print("Đã tắt an toàn! Hẹn gặp lại.")

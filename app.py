@@ -1,5 +1,6 @@
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for, send_file
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import json
 import requests
@@ -45,7 +46,15 @@ def init_web_db():
     except: pass
 
     admin_exist = cursor.execute("SELECT * FROM web_admins WHERE username='admin'").fetchone()
-    if not admin_exist: cursor.execute("INSERT INTO web_admins (username, password, role) VALUES ('admin', '123456', 'superadmin')")
+    if not admin_exist: cursor.execute("INSERT INTO web_admins (username, password, role) VALUES ('admin', ?, 'superadmin')", (generate_password_hash('123456'),))
+    
+    # Auto migrate any existing plain text admin passwords to hashed passwords
+    admins = cursor.execute("SELECT id, password FROM web_admins").fetchall()
+    for row in admins:
+        pwd = row['password']
+        if pwd and not (pwd.startswith('scrypt:') or pwd.startswith('pbkdf2:')):
+            hashed_pwd = generate_password_hash(pwd)
+            cursor.execute("UPDATE web_admins SET password = ? WHERE id = ?", (hashed_pwd, row['id']))
     
     token_exist = cursor.execute("SELECT * FROM settings WHERE key='BOT_TOKEN'").fetchone()
     if not token_exist: cursor.execute("INSERT INTO settings (key, value) VALUES ('BOT_TOKEN', 'ĐIỀN TOKEN VÀO ĐÂY')")
@@ -74,12 +83,23 @@ def login():
         cursor = conn.cursor()
         admin_exist = cursor.execute("SELECT * FROM web_admins WHERE username='admin'").fetchone()
         if not admin_exist:
-            cursor.execute("INSERT OR IGNORE INTO web_admins (username, password, role) VALUES ('admin', '123456', 'superadmin')")
+            cursor.execute("INSERT OR IGNORE INTO web_admins (username, password, role) VALUES ('admin', ?, 'superadmin')", (generate_password_hash('123456'),))
             conn.commit()
             
-        admin = conn.execute("SELECT * FROM web_admins WHERE username=? AND password=?", (u, p)).fetchone()
-        conn.close()
+        admin = conn.execute("SELECT * FROM web_admins WHERE username=?", (u,)).fetchone()
+        is_valid = False
         if admin:
+            db_pwd = admin['password']
+            if check_password_hash(db_pwd, p):
+                is_valid = True
+            elif db_pwd == p:
+                is_valid = True
+                hashed = generate_password_hash(p)
+                conn.execute("UPDATE web_admins SET password=? WHERE id=?", (hashed, admin['id']))
+                conn.commit()
+                
+        conn.close()
+        if is_valid:
             session.update({'logged_in': True, 'username': admin['username'], 'role': admin['role']})
             return redirect(url_for('admin_dashboard'))
         return "<div style='text-align: center; margin-top: 50px; font-family: sans-serif;'>❌ Sai tài khoản hoặc mật khẩu! <br><br><a href='/login' style='padding: 10px 20px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px;'>Thử lại</a></div>"
@@ -225,7 +245,8 @@ def api_add_admin():
     conn = get_db_connection()
     if conn.execute("SELECT * FROM web_admins WHERE username=?", (u,)).fetchone():
         conn.close(); return jsonify({"success": False, "error": "Tài khoản tồn tại!"})
-    conn.execute("INSERT INTO web_admins (username, password, role) VALUES (?, ?, ?)", (u, p, r)); conn.commit(); conn.close()
+    hashed_pwd = generate_password_hash(p)
+    conn.execute("INSERT INTO web_admins (username, password, role) VALUES (?, ?, ?)", (u, hashed_pwd, r)); conn.commit(); conn.close()
     return jsonify({"success": True})
 
 @app.route('/api/admin_reset_password', methods=['POST'])
@@ -234,7 +255,8 @@ def api_admin_reset_password():
     if session.get('role') == 'manager': return jsonify({"success": False, "error": "Bạn không có quyền sửa mật khẩu!"})
     data = request.json
     if not data.get('username') or not data.get('new_password'): return jsonify({"success": False, "error": "Dữ liệu sai"})
-    conn = get_db_connection(); conn.execute("UPDATE web_admins SET password=? WHERE username=?", (data.get('new_password'), data.get('username'))); conn.commit(); conn.close()
+    hashed_pwd = generate_password_hash(data.get('new_password'))
+    conn = get_db_connection(); conn.execute("UPDATE web_admins SET password=? WHERE username=?", (hashed_pwd, data.get('username'))); conn.commit(); conn.close()
     return jsonify({"success": True})
 
 @app.route('/api/delete_admin/<int:admin_id>', methods=['POST'])
