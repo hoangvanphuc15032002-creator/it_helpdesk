@@ -519,6 +519,7 @@
 
     <script id="tickets-data" type="application/json">{{ tickets_json | safe }}</script>
     <script id="departments-data" type="application/json">{{ departments_json | safe }}</script>
+    <script id="it-staff-data" type="application/json">{{ it_staff_json | safe }}</script>
 
     <script>
         function toggleSidebar() {
@@ -564,12 +565,11 @@
 
         let allTickets = JSON.parse(document.getElementById('tickets-data').textContent || '[]');
         let dbDepts = JSON.parse(document.getElementById('departments-data').textContent || '[]');
+        let allITStaff = JSON.parse(document.getElementById('it-staff-data').textContent || '[]');
         let filteredTickets = [];
         let charts = { line: null, dept: null, itKpi: null };
         let currentPage = 1;
-        const rowsPerPage = 10;
-        
-        let allITStaff = []; 
+        const rowsPerPage = 10; 
 
         window.onload = () => {
             document.getElementById('searchInput').value = '';
@@ -648,6 +648,7 @@
             try {
                 const res = await fetch('/api/data');
                 const data = await res.json();
+                if (data.it_staff) allITStaff = data.it_staff;
                 if (forceRefresh || JSON.stringify(data.tickets) !== JSON.stringify(allTickets)) {
                     allTickets = data.tickets; 
                     {% if session.role in ['superadmin', 'manager'] %}
@@ -774,13 +775,34 @@
             
             const sel = document.getElementById('editMainIt');
             sel.innerHTML = '<option value="">-- Trống --</option>';
-            const itInputs = document.querySelectorAll('input[id^="itn-"]');
-            itInputs.forEach(inp => {
-                const it_id = inp.id.replace('itn-', '');
-                const name = inp.value;
-                sel.appendChild(new Option(name, it_id));
-            });
-            sel.value = t.it_id || '';
+            
+            if (allITStaff && allITStaff.length > 0) {
+                allITStaff.forEach(it => {
+                    sel.appendChild(new Option(it.it_real_name, it.it_id));
+                });
+            } else {
+                const itItems = document.querySelectorAll('.it-item');
+                itItems.forEach(item => {
+                    const it_id = item.getAttribute('data-id');
+                    const name = item.getAttribute('data-name');
+                    if (it_id && name) {
+                        sel.appendChild(new Option(name, it_id));
+                    }
+                });
+            }
+
+            if (t.it_id) {
+                sel.value = t.it_id;
+            } else if (t.it_name) {
+                for (let i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].text === t.it_name) {
+                        sel.selectedIndex = i;
+                        break;
+                    }
+                }
+            } else {
+                sel.value = '';
+            }
             
             const modal = document.getElementById('editTicketModal');
             const content = document.getElementById('modalContent');

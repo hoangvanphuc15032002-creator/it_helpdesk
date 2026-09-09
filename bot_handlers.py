@@ -5,7 +5,7 @@ import time
 
 import bot_config
 from bot_db import connect_db, set_state, get_state, clear_state
-from bot_utils import get_adjusted_time, get_rating_keyboard, get_report_keyboard, safe_edit_message, safe_send_content
+from bot_utils import get_adjusted_time, get_rating_keyboard, get_report_keyboard, safe_edit_message, safe_send_content, send_ticket_to_group, truncate_text
 
 processed_msg_ids = set()
 user_last_ticket_time = {}
@@ -380,13 +380,14 @@ def setup_bot_handlers(current_bot):
             msg_to_it = f"🚨 **YÊU CẦU MỚI!**\n🆔 Mã: #{ticket_id}\n👤 Khách: {user[0]}\n🏢 Phòng: {user[1]}\n📝 Nội dung: {issue_text}"
             markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Nhận việc (Làm chính)", callback_data=f"claim_{ticket_id}"))
             
-            sent_msg = None
-            if message.content_type == 'photo': sent_msg = current_bot.send_photo(bot_config.GROUP_IT_ID, message.photo[-1].file_id, caption=msg_to_it, reply_markup=markup, parse_mode="Markdown")
-            elif message.content_type == 'video': sent_msg = current_bot.send_video(bot_config.GROUP_IT_ID, message.video.file_id, caption=msg_to_it, reply_markup=markup, parse_mode="Markdown")
-            elif message.content_type == 'document': sent_msg = current_bot.send_document(bot_config.GROUP_IT_ID, message.document.file_id, caption=msg_to_it, reply_markup=markup, parse_mode="Markdown")
-            elif message.content_type == 'voice': sent_msg = current_bot.send_voice(bot_config.GROUP_IT_ID, message.voice.file_id, caption=msg_to_it, reply_markup=markup, parse_mode="Markdown")
-            elif message.content_type == 'audio': sent_msg = current_bot.send_audio(bot_config.GROUP_IT_ID, message.audio.file_id, caption=msg_to_it, reply_markup=markup, parse_mode="Markdown")
-            else: sent_msg = current_bot.send_message(bot_config.GROUP_IT_ID, msg_to_it, reply_markup=markup, parse_mode="Markdown")
+            photo_id = message.photo[-1].file_id if message.photo else None
+            doc_id = message.document.file_id if message.document else None
+            vid_id = message.video.file_id if message.video else None
+            voice_id = message.voice.file_id if message.voice else None
+            audio_id = message.audio.file_id if message.audio else None
+            file_id = photo_id or doc_id or vid_id or voice_id or audio_id
+            
+            sent_msg = send_ticket_to_group(current_bot, bot_config.GROUP_IT_ID, message.content_type, file_id, msg_to_it, reply_markup=markup)
 
             if sent_msg:
                 try: current_bot.pin_chat_message(chat_id=bot_config.GROUP_IT_ID, message_id=sent_msg.message_id, disable_notification=True)
@@ -495,8 +496,11 @@ def setup_bot_handlers(current_bot):
                                types.InlineKeyboardButton("🆘 Thêm người hỗ trợ", callback_data=f"asksupport_{ticket_id}_{call.message.message_id}"))
                     markup.add(types.InlineKeyboardButton("🔙 Trả lại (Hủy nhận)", callback_data=f"abort_{ticket_id}_{call.message.message_id}"))
                     
-                    msg_to_it = f"🚀 **[LÀM CHÍNH] YÊU CẦU #{ticket_id}**\n👤 Khách: {res[1]}\n🏢 Phòng: {res[2]}\n📝 Lỗi: {res[3]}\n👉 Chat trực tiếp với khách bên dưới:"
-                    sent_it_msg = current_bot.send_message(workspace_id, msg_to_it, reply_markup=markup, parse_mode="Markdown", message_thread_id=topic_id)
+                    msg_to_it = f"🚀 **[LÀM CHÍNH] YÊU CẦU #{ticket_id}**\n👤 Khách: {res[1]}\n🏢 Phòng: {res[2]}\n📝 Lỗi: {truncate_text(res[3], 3500)}\n👉 Chat trực tiếp với khách bên dưới:"
+                    try:
+                        sent_it_msg = current_bot.send_message(workspace_id, msg_to_it, reply_markup=markup, parse_mode="Markdown", message_thread_id=topic_id)
+                    except Exception:
+                        sent_it_msg = current_bot.send_message(workspace_id, msg_to_it.replace("**", "").replace("*", "").replace("`", "").replace("_", ""), reply_markup=markup, message_thread_id=topic_id)
                     
                     if str(workspace_id).startswith('-100'):
                         clean_id = str(workspace_id)[4:]
@@ -512,8 +516,11 @@ def setup_bot_handlers(current_bot):
                     markup.add(types.InlineKeyboardButton("✅ Hoàn thành", callback_data=f"done_{ticket_id}_{call.message.message_id}"),
                                types.InlineKeyboardButton("🆘 Thêm người hỗ trợ", callback_data=f"asksupport_{ticket_id}_{call.message.message_id}"))
                     markup.add(types.InlineKeyboardButton("🔙 Trả lại (Hủy nhận)", callback_data=f"abort_{ticket_id}_{call.message.message_id}"))
-                    msg_to_it = f"🚀 **[LÀM CHÍNH] YÊU CẦU #{ticket_id}**\n👤 Khách: {res[1]}\n🏢 Phòng: {res[2]}\n📝 Lỗi: {res[3]}\n👉 Chat trực tiếp với khách bên dưới:"
-                    sent_it_msg = current_bot.send_message(it_id, msg_to_it, reply_markup=markup, parse_mode="Markdown")
+                    msg_to_it = f"🚀 **[LÀM CHÍNH] YÊU CẦU #{ticket_id}**\n👤 Khách: {res[1]}\n🏢 Phòng: {res[2]}\n📝 Lỗi: {truncate_text(res[3], 3500)}\n👉 Chat trực tiếp với khách bên dưới:"
+                    try:
+                        sent_it_msg = current_bot.send_message(it_id, msg_to_it, reply_markup=markup, parse_mode="Markdown")
+                    except Exception:
+                        sent_it_msg = current_bot.send_message(it_id, msg_to_it.replace("**", "").replace("*", "").replace("`", "").replace("_", ""), reply_markup=markup)
                 except: 
                     cursor.execute("UPDATE tickets SET it_id = NULL, it_name = NULL, status = 'Mới' WHERE id = ?", (ticket_id,))
                     conn.commit()
@@ -550,8 +557,11 @@ def setup_bot_handlers(current_bot):
             cursor.execute('SELECT user_name, dept, issue, it_name FROM tickets WHERE id = ?', (ticket_id,))
             res = cursor.fetchone()
             if res:
-                text_help = f"🚨 **YÊU CẦU #{ticket_id} ĐANG CẦN SUPPORT** 🆘\n👤 Khách: {res[0]}\n🏢 Phòng: {res[1]}\n📝 Lỗi: {res[2]}\n\n👨‍💻 **IT Chính:** {res[3]} đang cần đồng đội hỗ trợ ca này!"
-                sent_msg = current_bot.send_message(bot_config.GROUP_IT_ID, text_help, reply_markup=markup, parse_mode="Markdown")
+                text_help = f"🚨 **YÊU CẦU #{ticket_id} ĐANG CẦN SUPPORT** 🆘\n👤 Khách: {res[0]}\n🏢 Phòng: {res[1]}\n📝 Lỗi: {truncate_text(res[2], 3000)}\n\n👨‍💻 **IT Chính:** {res[3]} đang cần đồng đội hỗ trợ ca này!"
+                try:
+                    sent_msg = current_bot.send_message(bot_config.GROUP_IT_ID, text_help, reply_markup=markup, parse_mode="Markdown")
+                except Exception:
+                    sent_msg = current_bot.send_message(bot_config.GROUP_IT_ID, text_help.replace("**", "").replace("*", "").replace("`", "").replace("_", ""), reply_markup=markup)
                 cursor.execute('UPDATE tickets SET group_support_msg_id = ? WHERE id = ?', (sent_msg.message_id, ticket_id))
                 conn.commit()
 
@@ -724,9 +734,12 @@ def setup_bot_handlers(current_bot):
             current_bot.answer_callback_query(call.id, "Đã nhả Ticket thành công!")
             
             if res:
-                text_repost = f"🚨 **TICKET #{ticket_id} BỊ TRẢ LẠI**\n👤 Khách: {res[0]}\n🏢 Phòng: {res[1]}\n📝 Lỗi: {res[2]}"
+                text_repost = f"🚨 **TICKET #{ticket_id} BỊ TRẢ LẠI**\n👤 Khách: {res[0]}\n🏢 Phòng: {res[1]}\n📝 Lỗi: {truncate_text(res[2], 3000)}"
                 markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Nhận việc", callback_data=f"claim_{ticket_id}"))
-                sent_msg = current_bot.send_message(bot_config.GROUP_IT_ID, text_repost, reply_markup=markup, parse_mode="Markdown")
+                try:
+                    sent_msg = current_bot.send_message(bot_config.GROUP_IT_ID, text_repost, reply_markup=markup, parse_mode="Markdown")
+                except Exception:
+                    sent_msg = current_bot.send_message(bot_config.GROUP_IT_ID, text_repost.replace("**", "").replace("*", "").replace("`", "").replace("_", ""), reply_markup=markup)
                 try: current_bot.pin_chat_message(chat_id=bot_config.GROUP_IT_ID, message_id=sent_msg.message_id, disable_notification=True)
                 except: pass
                 cursor.execute("UPDATE tickets SET it_id=NULL, it_name=NULL, support_it_ids=NULL, support_it_names=NULL, status='Mới', group_msg_id=?, it_msg_id=NULL, topic_id=NULL WHERE id=?", (sent_msg.message_id, ticket_id))

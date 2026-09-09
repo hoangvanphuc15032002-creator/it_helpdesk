@@ -108,7 +108,8 @@ def admin_dashboard():
     tickets = [dict(r) for r in conn.execute("SELECT * FROM tickets ORDER BY id DESC LIMIT 1000").fetchall()]
     depts = conn.execute("SELECT * FROM departments ORDER BY id DESC").fetchall()
     users = conn.execute("SELECT * FROM users ORDER BY user_id DESC").fetchall()
-    it_staff = conn.execute("SELECT * FROM it_staff").fetchall()
+    it_staff_rows = conn.execute("SELECT * FROM it_staff").fetchall()
+    it_staff = [dict(r) for r in it_staff_rows]
     admins = conn.execute("SELECT id, username, role FROM web_admins ORDER BY id ASC").fetchall()
     
     bot_token = conn.execute("SELECT value FROM settings WHERE key='BOT_TOKEN'").fetchone()
@@ -132,6 +133,7 @@ def admin_dashboard():
     return render_template('admin.html', 
                            tickets_json=json.dumps(tickets), 
                            departments_json=json.dumps([r['name'] for r in depts]), 
+                           it_staff_json=json.dumps(it_staff),
                            depts=depts, users=users, it_staff=it_staff, admins=admins,
                            bot_token=token_val, group_id=group_val, 
                            bot_time_str=bot_time_str, bot_time_parts=json.dumps(bot_time_parts))
@@ -141,8 +143,9 @@ def admin_dashboard():
 def api_data():
     conn = get_db_connection()
     tickets = [dict(r) for r in conn.execute("SELECT * FROM tickets ORDER BY id DESC LIMIT 1000").fetchall()]
+    it_staff = [dict(r) for r in conn.execute("SELECT * FROM it_staff").fetchall()]
     conn.close()
-    return jsonify({'tickets': tickets})
+    return jsonify({'tickets': tickets, 'it_staff': it_staff})
 
 @app.route('/api/export_db')
 @login_required
@@ -322,6 +325,8 @@ def api_update_it():
     conn = get_db_connection()
     conn.execute("UPDATE it_staff SET it_real_name=?, it_phone=? WHERE it_id=?", 
                  (data.get('name'), data.get('phone'), data.get('id')))
+    conn.execute("UPDATE tickets SET it_name=? WHERE it_id=?", (data.get('name'), data.get('id')))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('LAST_TICKET_UPDATE', ?)", (str(datetime.now().timestamp()),))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -344,6 +349,8 @@ def api_update_user():
     conn = get_db_connection()
     conn.execute("UPDATE users SET name=?, dept=? WHERE user_id=?", 
                  (data.get('name'), data.get('dept'), data.get('id')))
+    conn.execute("UPDATE tickets SET user_name=?, dept=? WHERE user_id=?", (data.get('name'), data.get('dept'), data.get('id')))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('LAST_TICKET_UPDATE', ?)", (str(datetime.now().timestamp()),))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
