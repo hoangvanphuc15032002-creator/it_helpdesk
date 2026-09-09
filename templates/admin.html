@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IT Helpdesk Command Center</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%236366f1'/><stop offset='100%25' stop-color='%234f46e5'/></linearGradient></defs><rect width='100' height='100' rx='28' fill='url(%23g)'/><path d='M30 46 C30 30 70 30 70 46 L70 58 A10 10 0 0 1 60 68 L50 68 C44 68 40 64 40 58' stroke='white' stroke-width='7' fill='none' stroke-linecap='round'/><rect x='22' y='42' width='14' height='22' rx='6' fill='white'/><rect x='64' y='42' width='14' height='22' rx='6' fill='white'/><circle cx='40' cy='58' r='4' fill='%2338bdf8'/></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2310b981'/><stop offset='100%25' stop-color='%23059669'/></linearGradient></defs><rect width='100' height='100' rx='28' fill='url(%23g)'/><path d='M30 46 C30 30 70 30 70 46 L70 58 A10 10 0 0 1 60 68 L50 68 C44 68 40 64 40 58' stroke='white' stroke-width='7' fill='none' stroke-linecap='round'/><rect x='22' y='42' width='14' height='22' rx='6' fill='white'/><rect x='64' y='42' width='14' height='22' rx='6' fill='white'/><circle cx='40' cy='58' r='4' fill='%23a3e635'/></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -14,7 +14,7 @@
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .sidebar-item.active { background: rgba(79, 70, 229, 0.1); border-left: 4px solid #4f46e5; color: #4f46e5; }
+        .sidebar-item.active { background: rgba(16, 185, 129, 0.12); border-left: 4px solid #10b981; color: #10b981; }
         .modern-card { background: white; border: 1px solid #e2e8f0; border-radius: 1.25rem; transition: all 0.3s; }
         .status-badge { padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
         .status-Mới { background: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; }
@@ -30,14 +30,14 @@
 
     <aside id="sidebar" class="w-64 bg-slate-900 text-slate-400 flex flex-col shadow-2xl flex-shrink-0 z-20 transition-all duration-300">
         <div class="h-20 flex items-center px-6 bg-slate-950 border-b border-slate-800/60">
-            <div class="w-10 h-10 bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-400 rounded-xl flex items-center justify-center mr-3 shadow-lg shadow-indigo-500/30 border border-indigo-400/20 flex-shrink-0">
+            <div class="w-10 h-10 bg-gradient-to-tr from-emerald-600 via-emerald-500 to-teal-400 rounded-xl flex items-center justify-center mr-3 shadow-lg shadow-emerald-500/30 border border-emerald-400/20 flex-shrink-0">
                 <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 012.121-14.85"></path>
                 </svg>
             </div>
             <div class="flex flex-col overflow-hidden">
-                <span class="text-white font-black text-lg tracking-tight leading-none bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">IT HELPDESK</span>
-                <span class="text-[10px] font-bold text-indigo-400 tracking-wider uppercase mt-1">Command Center</span>
+                <span class="text-white font-black text-lg tracking-tight leading-none bg-gradient-to-r from-white via-slate-100 to-emerald-200 bg-clip-text text-transparent">IT HELPDESK</span>
+                <span class="text-[10px] font-bold text-emerald-400 tracking-wider uppercase mt-1">Command Center</span>
             </div>
         </div>
         <nav class="flex-1 py-6 space-y-1 px-3">
