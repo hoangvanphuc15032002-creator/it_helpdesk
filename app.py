@@ -342,8 +342,28 @@ def api_create_ticket():
     now_time = datetime.now() + timedelta(seconds=offset_sec)
     now_str = now_time.strftime("%Y-%m-%d %H:%M:%S")
     
-    created_at = data.get('created_at') or now_str
-    completed_at = now_str if status == 'Hoàn thành' else None
+    custom_created = data.get('created_at')
+    if custom_created:
+        try:
+            created_at = custom_created.replace('T', ' ')
+            if len(created_at) == 16: created_at += ":00"
+        except Exception:
+            created_at = now_str
+    else:
+        created_at = now_str
+
+    custom_completed = data.get('completed_at')
+    if status == 'Hoàn thành':
+        if custom_completed:
+            try:
+                completed_at = custom_completed.replace('T', ' ')
+                if len(completed_at) == 16: completed_at += ":00"
+            except Exception:
+                completed_at = created_at
+        else:
+            completed_at = created_at
+    else:
+        completed_at = None
     
     rating_val = int(rating) if rating else (5 if status == 'Hoàn thành' else None)
     
@@ -362,7 +382,7 @@ def api_create_ticket():
 @login_required
 def api_update_ticket():
     if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
-    data = request.json
+    data = request.json or {}
     t_id = data.get('id')
     issue = data.get('issue')
     it_id = data.get('it_id')
@@ -370,16 +390,31 @@ def api_update_ticket():
     sup_names = data.get('support_it_names')
     status = data.get('status')
     
+    custom_created = data.get('created_at')
+    custom_completed = data.get('completed_at')
+    
     conn = get_db_connection()
-    current_t = conn.execute("SELECT completed_at FROM tickets WHERE id=?", (t_id,)).fetchone()
+    current_t = conn.execute("SELECT completed_at, created_at FROM tickets WHERE id=?", (t_id,)).fetchone()
     completed_at_val = current_t['completed_at'] if current_t and current_t['completed_at'] else None
     
-    if status == 'Hoàn thành' and not completed_at_val:
+    if custom_completed and status == 'Hoàn thành':
+        try:
+            completed_at_val = custom_completed.replace('T', ' ')
+            if len(completed_at_val) == 16: completed_at_val += ":00"
+        except Exception: pass
+    elif status == 'Hoàn thành' and not completed_at_val:
         time_offset_row = conn.execute("SELECT value FROM settings WHERE key='TIME_OFFSET'").fetchone()
         offset_sec = int(time_offset_row['value']) if time_offset_row else 0
         completed_at_val = (datetime.now() + timedelta(seconds=offset_sec)).strftime("%Y-%m-%d %H:%M:%S")
     elif status != 'Hoàn thành':
         completed_at_val = None
+
+    if custom_created:
+        try:
+            created_at_val = custom_created.replace('T', ' ')
+            if len(created_at_val) == 16: created_at_val += ":00"
+            conn.execute("UPDATE tickets SET created_at=? WHERE id=?", (created_at_val, t_id))
+        except Exception: pass
 
     conn.execute("UPDATE tickets SET issue=?, it_id=?, it_name=?, support_it_names=?, status=?, completed_at=? WHERE id=?", 
                  (issue, it_id, it_name, sup_names, status, completed_at_val, t_id))

@@ -464,6 +464,16 @@
                     <label class="text-[10px] font-bold text-slate-400 uppercase">Tên IT Hỗ trợ (Ngăn cách bằng dấu phẩy)</label>
                     <input type="text" id="editSupNames" class="w-full border border-slate-200 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                 </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">📅 Ngày & Giờ Tạo</label>
+                        <input type="datetime-local" id="editCreatedAt" class="w-full border border-slate-200 p-2.5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">⏰ Ngày & Giờ Hoàn Thành</label>
+                        <input type="datetime-local" id="editCompletedAt" class="w-full border border-slate-200 p-2.5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                </div>
             </div>
             <div class="mt-8 flex justify-end gap-3">
                 <button onclick="closeModal()" class="px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Hủy</button>
@@ -507,6 +517,16 @@
                             <option value="Đang xử lý">⏳ Đang xử lý</option>
                             <option value="Mới">🚨 Mới (Chờ nhận)</option>
                         </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">📅 Ngày & Giờ Tạo Ticket *</label>
+                        <input type="datetime-local" id="addTicketCreatedAt" class="w-full border border-slate-200 p-2.5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">⏰ Ngày & Giờ Hoàn Thành</label>
+                        <input type="datetime-local" id="addTicketCompletedAt" class="w-full border border-slate-200 p-2.5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
                     </div>
                 </div>
                 <div>
@@ -834,12 +854,29 @@
             });
         }
 
+        function formatDateTimeLocal(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr.replace(' ', 'T'));
+            if (isNaN(d.getTime())) return '';
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            return d.toISOString().slice(0, 16);
+        }
+
+        function getNowLocalIso() {
+            const d = new Date();
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            return d.toISOString().slice(0, 16);
+        }
+
         function openEditTicket(id) {
             const t = allTickets.find(x => x.id === id);
             document.getElementById('editTid').innerText = t.id;
             document.getElementById('editIssue').value = t.issue;
             document.getElementById('editStatus').value = t.status;
             document.getElementById('editSupNames').value = t.support_it_names || '';
+            
+            document.getElementById('editCreatedAt').value = formatDateTimeLocal(t.created_at);
+            document.getElementById('editCompletedAt').value = formatDateTimeLocal(t.completed_at);
             
             const sel = document.getElementById('editMainIt');
             sel.innerHTML = '<option value="">-- Trống --</option>';
@@ -894,7 +931,9 @@
                 status: document.getElementById('editStatus').value,
                 it_id: itSel.value ? parseInt(itSel.value) : null,
                 it_name: itSel.value ? itSel.options[itSel.selectedIndex].text : null,
-                support_it_names: document.getElementById('editSupNames').value
+                support_it_names: document.getElementById('editSupNames').value,
+                created_at: document.getElementById('editCreatedAt').value,
+                completed_at: document.getElementById('editCompletedAt').value
             };
             const res = await fetch('/api/update_ticket', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
             const resData = await res.json();
@@ -908,6 +947,10 @@
             document.getElementById('addTicketIssue').value = '';
             document.getElementById('addTicketStatus').value = 'Hoàn thành';
             document.getElementById('addTicketRating').value = '5';
+            
+            const nowIso = getNowLocalIso();
+            document.getElementById('addTicketCreatedAt').value = nowIso;
+            document.getElementById('addTicketCompletedAt').value = nowIso;
             
             const datalist = document.getElementById('deptsList');
             datalist.innerHTML = '';
@@ -959,7 +1002,9 @@
                 issue: issue,
                 it_id: itId ? parseInt(itId) : null,
                 status: status,
-                rating: parseInt(rating)
+                rating: parseInt(rating),
+                created_at: document.getElementById('addTicketCreatedAt').value,
+                completed_at: document.getElementById('addTicketCompletedAt').value
             };
 
             const res = await fetch('/api/create_ticket', {
