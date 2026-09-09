@@ -111,6 +111,11 @@
                 </div>
 
                 <div class="flex items-center gap-2">
+                    {% if session.role != 'manager' %}
+                    <button onclick="openAddTicketModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md shadow-indigo-500/20 flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus text-[11px]"></i> Thêm Ticket
+                    </button>
+                    {% endif %}
                     <button onclick="manualRefresh()" class="bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-indigo-100 transition shadow-sm flex items-center gap-1">
                         <i class="fa-solid fa-rotate" id="refreshSpinIcon"></i> Làm mới
                     </button>
@@ -463,6 +468,63 @@
             <div class="mt-8 flex justify-end gap-3">
                 <button onclick="closeModal()" class="px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Hủy</button>
                 <button onclick="submitEditTicket()" class="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Thêm Ticket Thủ Công -->
+    <div id="addTicketModal" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center backdrop-blur-sm transition-all duration-300">
+        <div class="bg-white p-8 rounded-3xl w-[550px] shadow-2xl relative transform transition-all scale-95 opacity-0" id="addTicketModalContent">
+            <h3 class="text-xl font-black mb-6 uppercase text-slate-800 border-b pb-3 flex items-center justify-between">
+                <span class="flex items-center"><i class="fa-solid fa-square-plus text-indigo-600 mr-2"></i>Thêm Ticket Thủ Công</span>
+                <span class="text-xs font-normal text-slate-400 normal-case">(Xử lý trực tiếp / Không qua Bot)</span>
+            </h3>
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Tên Người Yêu Cầu (Khách) *</label>
+                        <input type="text" id="addTicketUserName" placeholder="Ví dụ: Nguyễn Văn A" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Phòng Ban *</label>
+                        <input type="text" id="addTicketDept" list="deptsList" placeholder="Ví dụ: Kế toán" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <datalist id="deptsList"></datalist>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Mô tả sự cố / Công việc xử lý *</label>
+                    <textarea id="addTicketIssue" rows="3" placeholder="Nhập chi tiết lỗi hoặc nội dung đã hỗ trợ..." class="w-full border border-slate-200 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">IT Phụ trách chính</label>
+                        <select id="addTicketItId" class="w-full border border-slate-200 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Trạng thái Ticket</label>
+                        <select id="addTicketStatus" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value="Hoàn thành" selected>✅ Hoàn thành (Đã xong)</option>
+                            <option value="Đang xử lý">⏳ Đang xử lý</option>
+                            <option value="Mới">🚨 Mới (Chờ nhận)</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Đánh giá KPI (Số sao)</label>
+                    <select id="addTicketRating" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="5" selected>5 ⭐ - Xuất sắc</option>
+                        <option value="4">4 ⭐ - Tốt</option>
+                        <option value="3">3 ⭐ - Khá</option>
+                        <option value="2">2 ⭐ - Trung bình</option>
+                        <option value="1">1 ⭐ - Cần cải thiện</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-8 flex justify-end gap-3">
+                <button onclick="closeAddTicketModal()" class="px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Hủy</button>
+                <button onclick="submitAddTicket()" class="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition flex items-center">
+                    <i class="fa-solid fa-plus-circle mr-2"></i> Lưu Ticket
+                </button>
             </div>
         </div>
     </div>
@@ -838,6 +900,81 @@
             const resData = await res.json();
             if(!resData.success) alert(resData.error);
             closeModal(); fetchRealtimeData();
+        }
+
+        function openAddTicketModal() {
+            document.getElementById('addTicketUserName').value = '';
+            document.getElementById('addTicketDept').value = '';
+            document.getElementById('addTicketIssue').value = '';
+            document.getElementById('addTicketStatus').value = 'Hoàn thành';
+            document.getElementById('addTicketRating').value = '5';
+            
+            const datalist = document.getElementById('deptsList');
+            datalist.innerHTML = '';
+            if (dbDepts && dbDepts.length > 0) {
+                dbDepts.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = typeof d === 'string' ? d : d.name;
+                    datalist.appendChild(opt);
+                });
+            }
+            
+            const itSel = document.getElementById('addTicketItId');
+            itSel.innerHTML = '<option value="">-- Chọn IT Phụ Trách --</option>';
+            if (allITStaff && allITStaff.length > 0) {
+                allITStaff.forEach(it => {
+                    itSel.appendChild(new Option(it.it_real_name, it.it_id));
+                });
+            }
+            
+            const modal = document.getElementById('addTicketModal');
+            const content = document.getElementById('addTicketModalContent');
+            modal.classList.remove('hidden');
+            setTimeout(() => { content.classList.remove('scale-95', 'opacity-0'); }, 10);
+        }
+
+        function closeAddTicketModal() {
+            const modal = document.getElementById('addTicketModal');
+            const content = document.getElementById('addTicketModalContent');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        }
+
+        async function submitAddTicket() {
+            const userName = document.getElementById('addTicketUserName').value.trim();
+            const dept = document.getElementById('addTicketDept').value.trim();
+            const issue = document.getElementById('addTicketIssue').value.trim();
+            const itId = document.getElementById('addTicketItId').value;
+            const status = document.getElementById('addTicketStatus').value;
+            const rating = document.getElementById('addTicketRating').value;
+
+            if (!userName || !dept || !issue) {
+                alert("⚠️ Vui lòng điền đầy đủ Tên người yêu cầu, Phòng ban và Nội dung sự cố!");
+                return;
+            }
+
+            const data = {
+                user_name: userName,
+                dept: dept,
+                issue: issue,
+                it_id: itId ? parseInt(itId) : null,
+                status: status,
+                rating: parseInt(rating)
+            };
+
+            const res = await fetch('/api/create_ticket', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const resData = await res.json();
+            if (!resData.success) {
+                alert("❌ Lỗi: " + resData.error);
+                return;
+            }
+            
+            closeAddTicketModal();
+            fetchRealtimeData(true);
         }
 
         async function deleteTicket(id) {

@@ -309,7 +309,54 @@ def api_delete_department(dept_id):
     conn.execute("DELETE FROM departments WHERE id=?", (dept_id,))
     conn.commit()
     conn.close()
-    return jsonify({"success": True})
+@app.route('/api/create_ticket', methods=['POST'])
+@login_required
+def api_create_ticket():
+    if session.get('role') == 'manager': return jsonify({"success": False, "error": "Quản lý chỉ có quyền xem!"})
+    data = request.json or {}
+    user_name = (data.get('user_name') or '').strip()
+    dept = (data.get('dept') or '').strip()
+    issue = (data.get('issue') or '').strip()
+    it_id = data.get('it_id')
+    status = data.get('status') or 'Hoàn thành'
+    rating = data.get('rating')
+    
+    if not user_name or not dept or not issue:
+        return jsonify({"success": False, "error": "Vui lòng điền đầy đủ Tên khách, Phòng ban và Nội dung sự cố!"})
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    it_name = None
+    if it_id:
+        try:
+            it_id = int(it_id)
+            it_row = cursor.execute("SELECT it_real_name FROM it_staff WHERE it_id=?", (it_id,)).fetchone()
+            if it_row:
+                it_name = it_row['it_real_name']
+        except Exception:
+            it_id = None
+            
+    time_offset_row = cursor.execute("SELECT value FROM settings WHERE key='TIME_OFFSET'").fetchone()
+    offset_sec = int(time_offset_row['value']) if time_offset_row else 0
+    now_time = datetime.now() + timedelta(seconds=offset_sec)
+    now_str = now_time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    created_at = data.get('created_at') or now_str
+    completed_at = now_str if status == 'Hoàn thành' else None
+    
+    rating_val = int(rating) if rating else (5 if status == 'Hoàn thành' else None)
+    
+    cursor.execute("""
+        INSERT INTO tickets (user_id, user_name, dept, issue, status, it_id, it_name, created_at, completed_at, rating)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (0, user_name, dept, issue, status, it_id, it_name, created_at, completed_at, rating_val))
+    
+    ticket_id = cursor.lastrowid
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('LAST_TICKET_UPDATE', ?)", (str(datetime.now().timestamp()),))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "ticket_id": ticket_id})
 
 @app.route('/api/update_ticket', methods=['POST'])
 @login_required
