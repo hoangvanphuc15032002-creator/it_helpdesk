@@ -1,0 +1,117 @@
+{% if session.role != 'manager' %}
+<section id="tab-settings" class="admin-tab hidden tab-content">
+    {% if session.role == 'superadmin' %}
+    <div class="modern-card p-6 border-l-4 border-blue-500 mb-8 shadow-sm">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-black text-slate-800 flex items-center"><i class="fa-solid fa-database text-blue-500 mr-2"></i>Sao Lưu Dữ Liệu (Backup)</h3>
+                <p class="text-[11px] text-slate-500 mt-1">Tải toàn bộ file Database về máy tính cá nhân để lưu trữ dự phòng an toàn.</p>
+            </div>
+            <a href="/api/export_db" class="bg-blue-600 text-white font-bold py-2.5 px-6 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/30 flex items-center">
+                <i class="fa-solid fa-download mr-2"></i> Tải Database
+            </a>
+        </div>
+    </div>
+    {% endif %}
+    
+    <div class="modern-card p-6 border-l-4 border-amber-500 mb-8 shadow-sm">
+        <h3 class="text-lg font-black text-slate-800 mb-2 flex items-center"><i class="fa-solid fa-clock text-amber-500 mr-2"></i>Đồng Bộ Thời Gian Bot</h3>
+        <p class="text-[11px] text-slate-500 mb-5"></p>
+        <div class="flex flex-col md:flex-row items-center gap-6">
+            <div class="w-full md:w-auto">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Đồng hồ nội bộ của Bot</label>
+                <div class="text-xl text-center md:text-left font-mono font-black text-amber-600 bg-amber-50 px-6 py-2.5 rounded-xl border border-amber-200 shadow-inner" id="liveBotTime">Đang tải...</div>
+            </div>
+            <div class="flex-1 w-full">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Chỉnh sửa lại cho đúng</label>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <input type="datetime-local" id="cfgCustomTime" value="{{ bot_time_str }}" class="flex-1 p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm font-mono shadow-sm">
+                    <button onclick="syncLocalTime()" class="bg-slate-100 text-slate-600 border border-slate-200 px-5 py-3 rounded-xl text-xs font-bold hover:bg-slate-200 transition shadow-sm" title="Lấy chuẩn giờ máy của bạn"><i class="fa-solid fa-laptop text-amber-500 mr-2"></i>Dùng giờ máy này</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modern-card p-6 mb-8 border-l-4 border-emerald-500">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-black text-slate-800 flex items-center"><i class="fa-solid fa-robot text-emerald-500 mr-2"></i>Cấu Hình Hệ Thống Bot</h3>
+            <span class="text-[10px] font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full uppercase">Đợi 10s sau khi thay đổi</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Bot Token (Lấy từ @BotFather)</label>
+                <div class="relative">
+                    <input type="password" id="cfgBotToken" value="{{ bot_token }}" class="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono pr-10" placeholder="123456789:ABCDefgh...">
+                    <button type="button" onclick="toggleTokenVisibility()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-emerald-600 transition" title="Hiện/Ẩn Token">
+                        <i id="tokenEyeIcon" class="fa-solid fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">ID Nhóm IT (Bắt đầu bằng dấu trừ -)</label>
+                <input type="text" id="cfgGroupId" value="{{ group_id }}" class="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono" placeholder="-100xxxxxxxxx">
+            </div>
+        </div>
+        <div class="mt-6 flex justify-end">
+            <button onclick="saveBotSettings()" class="bg-emerald-600 text-white font-bold py-2.5 px-6 rounded-xl hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/30 flex items-center">
+                <i class="fa-solid fa-floppy-disk mr-2"></i> Lưu Cấu Hình
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-2 modern-card overflow-hidden flex flex-col h-[600px]">
+            <div class="p-5 border-b bg-slate-50/50 font-bold text-slate-800 flex items-center justify-between">
+                <span><i class="fa-solid fa-users-cog text-indigo-500 mr-2"></i>Danh Sách Quản Trị Viên</span>
+            </div>
+            <div class="overflow-y-auto p-0">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase sticky top-0 shadow-sm">
+                        <tr>
+                            <th class="p-4">ID</th><th class="p-4">Tài khoản</th><th class="p-4 text-center">Vai trò</th><th class="p-4 text-right">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        {% for a in admins %}
+                        <tr class="hover:bg-slate-50 transition-colors group">
+                            <td class="p-4 font-bold text-slate-400">#{{ a.id }}</td>
+                            <td class="p-4 font-bold text-slate-700">{{ a.username }}</td>
+                            <td class="p-4 text-center">
+                                <span class="text-[10px] font-black {{ 'bg-rose-100 text-rose-600' if a.role == 'superadmin' else 'bg-amber-100 text-amber-600' if a.role == 'manager' else 'bg-indigo-100 text-indigo-600' }} px-2 py-1 rounded-lg uppercase tracking-tight">{{ a.role }}</span>
+                            </td>
+                            <td class="p-4 text-right">
+                                <button data-username="{{ a.username }}" onclick="resetAdminPassword(this.dataset.username)" class="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-indigo-500 hover:text-white transition mr-2" title="Đổi mật khẩu"><i class="fa-solid fa-key"></i> Đổi MK</button>
+                                {% if a.username != 'admin' %}
+                                <button data-id="{{ a.id }}" data-username="{{ a.username }}" onclick="deleteAdmin(this.dataset.id, this.dataset.username)" class="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-rose-500 hover:text-white transition" title="Xóa tài khoản"><i class="fa-solid fa-trash-can"></i></button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="modern-card p-6 h-fit">
+            <h3 class="text-lg font-black text-slate-800 mb-6 flex items-center"><i class="fa-solid fa-user-plus text-emerald-500 mr-2"></i>Thêm Tài Khoản</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tên đăng nhập</label>
+                    <input type="text" id="newAdminUser" class="mt-1 w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="Nhập ID...">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mật khẩu</label>
+                    <input type="password" id="newAdminPwd" class="mt-1 w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="••••••••">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vai trò</label>
+                    <select id="newAdminRole" class="mt-1 w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm">
+                        <option value="admin">Quản trị viên IT (Admin)</option>
+                        <option value="manager">Quản lý (Chỉ xem Dashboard)</option>
+                    </select>
+                </div>
+                <button onclick="addAdmin()" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 transition mt-2 shadow-lg shadow-emerald-500/30">Tạo tài khoản</button>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}

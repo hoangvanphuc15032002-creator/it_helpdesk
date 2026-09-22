@@ -1,0 +1,30 @@
+<aside id="sidebar" class="w-64 bg-slate-900 text-slate-400 flex flex-col shadow-2xl flex-shrink-0 z-20 transition-all duration-300">
+    <div class="h-20 flex items-center px-6 bg-slate-950 border-b border-slate-800/60">
+        <div class="w-10 h-10 bg-gradient-to-tr from-emerald-600 via-emerald-500 to-teal-400 rounded-xl flex items-center justify-center mr-3 shadow-lg shadow-emerald-500/30 border border-emerald-400/20 flex-shrink-0">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 012.121-14.85"></path>
+            </svg>
+        </div>
+        <div class="flex flex-col overflow-hidden">
+            <span class="text-white font-black text-lg tracking-tight leading-none bg-gradient-to-r from-white via-slate-100 to-emerald-200 bg-clip-text text-transparent">IT HELPDESK</span>
+            <span class="text-[10px] font-bold text-emerald-400 tracking-wider uppercase mt-1">Command Center</span>
+        </div>
+    </div>
+    <nav class="flex-1 py-6 space-y-1 px-3">
+        <div class="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Hệ thống</div>
+        
+        {% if session.role in ['superadmin', 'manager'] %}
+        <button id="menu-dashboard" onclick="switchTab('dashboard')" class="sidebar-item w-full flex items-center px-4 py-3.5 rounded-xl hover:bg-slate-800 transition-all"><i class="fa-solid fa-chart-line w-6"></i><span class="ml-2 font-semibold">Dashboard</span></button>
+        {% endif %}
+        
+        {% if session.role != 'manager' %}
+        <button id="menu-depts" onclick="switchTab('depts')" class="sidebar-item w-full flex items-center px-4 py-3.5 rounded-xl hover:bg-slate-800 transition-all"><i class="fa-solid fa-building-user w-6"></i><span class="ml-2 font-semibold">Phòng Ban</span></button>
+        <button id="menu-users" onclick="switchTab('users')" class="sidebar-item w-full flex items-center px-4 py-3.5 rounded-xl hover:bg-slate-800 transition-all"><i class="fa-solid fa-users-gear w-6"></i><span class="ml-2 font-semibold">Nhân Sự</span></button>
+        <button id="menu-settings" onclick="switchTab('settings')" class="sidebar-item w-full flex items-center px-4 py-3.5 rounded-xl hover:bg-slate-800 transition-all"><i class="fa-solid fa-user-shield w-6"></i><span class="ml-2 font-semibold">Quản Trị Web</span></button>
+        {% endif %}
+        
+        <div class="pt-10 border-t border-slate-800/50 mt-10">
+            <a href="/logout" class="flex items-center px-4 py-3 text-rose-400 hover:bg-rose-500/10 rounded-xl"><i class="fa-solid fa-power-off w-6"></i><span class="ml-2 font-bold">Đăng xuất</span></a>
+        </div>
+    </nav>
+</aside>

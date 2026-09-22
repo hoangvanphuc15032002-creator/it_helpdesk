@@ -1,0 +1,67 @@
+{% if session.role in ['superadmin', 'manager'] %}
+<section id="tab-dashboard" class="admin-tab hidden tab-content">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 text-center">
+        <div class="modern-card p-6 border-b-4 border-indigo-500 relative overflow-hidden">
+            <div class="absolute -right-4 -top-4 opacity-5 text-indigo-500"><i class="fa-solid fa-ticket text-6xl"></i></div>
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 relative z-10">Tổng sự cố <span id="kpiMonthText" class="text-indigo-500"></span></p>
+            <h2 id="kpiTotal" class="text-4xl font-black text-slate-800 relative z-10">0</h2>
+        </div>
+        <div class="modern-card p-6 border-b-4 border-rose-500 relative overflow-hidden bg-rose-50/30">
+            <div class="absolute -right-4 -top-4 opacity-5 text-rose-500"><i class="fa-solid fa-bell text-6xl"></i></div>
+            <p class="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1 relative z-10">Chờ tiếp nhận</p>
+            <h2 id="kpiNew" class="text-4xl font-black text-rose-600 relative z-10">0</h2>
+        </div>
+        <div class="modern-card p-6 border-b-4 border-amber-500 relative overflow-hidden bg-amber-50/30">
+            <div class="absolute -right-4 -top-4 opacity-5 text-amber-500"><i class="fa-solid fa-screwdriver-wrench text-6xl"></i></div>
+            <p class="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1 relative z-10">Đang xử lý</p>
+            <h2 id="kpiPending" class="text-4xl font-black text-amber-600 relative z-10">0</h2>
+        </div>
+        <div class="modern-card p-6 border-b-4 border-emerald-500 relative overflow-hidden bg-emerald-50/30">
+            <div class="absolute -right-4 -top-4 opacity-5 text-emerald-500"><i class="fa-solid fa-check-circle text-6xl"></i></div>
+            <p class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1 relative z-10">Hoàn tất</p>
+            <h2 id="kpiCompleted" class="text-4xl font-black text-emerald-600 relative z-10">0</h2>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div class="lg:col-span-2 modern-card p-6">
+            <h3 id="chartTitleTime" class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Lưu lượng báo lỗi</h3>
+            <div class="h-64 w-full"><canvas id="lineChart"></canvas></div>
+        </div>
+        <div class="modern-card p-6 text-center">
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Tỷ lệ Phòng Ban</h3>
+            <div class="h-64 w-full"><canvas id="deptChart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="modern-card p-6 mb-8">
+        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Năng suất Nhân Sự IT (Làm chính & Hỗ trợ)</h3>
+        <div class="h-64 w-full"><canvas id="itKpiChart"></canvas></div>
+    </div>
+
+    <div class="modern-card overflow-hidden">
+        <div class="p-5 border-b font-bold text-slate-800 bg-slate-50/50 flex justify-between items-center">
+            <span>Danh sách công việc & Đánh giá</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase">
+                    <tr>
+                        <th class="p-4">Mã</th><th class="p-4">Khách hàng</th><th class="p-4">Nội dung</th><th class="p-4 text-center">Trạng thái</th><th class="p-4 text-center">IT Phụ trách</th><th class="p-4 text-center">Đánh giá</th><th class="p-4 text-right">Thời gian / Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="ticketTableBody" class="divide-y divide-slate-100 bg-white"></tbody>
+            </table>
+            <div id="noDataMsg" class="hidden p-10 text-center text-slate-400">Không tìm thấy dữ liệu phù hợp.</div>
+        </div>
+        <div class="p-4 bg-white border-t flex justify-between items-center">
+            <div class="text-[10px] font-bold text-slate-400 uppercase">Hiển thị <span id="pageStart">0</span>-<span id="pageEnd">0</span> / <span id="pageTotal">0</span></div>
+            <div class="flex gap-2">
+                <button onclick="changePage(-1)" class="px-3 py-1.5 border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black transition">Trước</button>
+                <span id="pageIndicator" class="px-3 py-1.5 bg-slate-100 rounded-xl text-[10px] font-black">Trang 1</span>
+                <button onclick="changePage(1)" class="px-3 py-1.5 border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black transition">Sau</button>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}

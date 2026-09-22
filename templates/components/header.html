@@ -1,0 +1,63 @@
+<header class="h-20 bg-white border-b flex items-center justify-between px-8 flex-shrink-0 shadow-sm z-10">
+    <div class="flex items-center gap-4">
+        <button onclick="toggleSidebar()" class="text-slate-500 hover:text-indigo-600 transition p-2 bg-slate-50 rounded-lg hover:bg-slate-100">
+            <i class="fa-solid fa-bars text-lg"></i>
+        </button>
+        <h1 id="header-title" class="text-xl font-black text-slate-800 uppercase tracking-tight">Dashboard</h1>
+    </div>
+    
+    <div id="dashboard-filters" class="hidden items-center gap-3">
+        <div class="flex items-center gap-1">
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                <input type="text" style="display:none" autocomplete="false">
+                <input type="search" id="searchInput" autocomplete="new-password" spellcheck="false" onkeypress="if(event.key === 'Enter') applyFilters()" placeholder="Tìm ID, Tên, Lỗi..." class="w-48 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+            </div>
+            <button onclick="applyFilters()" class="bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-indigo-100 transition shadow-sm">
+                Tìm
+            </button>
+        </div>
+
+        <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1">
+            <div class="relative w-28">
+                <select id="itFilter" onchange="applyFilters()" class="w-full bg-transparent border-none text-xs font-bold px-3 py-1.5 focus:ring-0 cursor-pointer appearance-none truncate pr-6"></select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-2.5 text-[10px] text-slate-400 pointer-events-none"></i>
+            </div>
+            <div class="w-[1px] h-4 bg-slate-300 mx-1"></div>
+            <div class="relative w-32">
+                <select id="deptFilter" onchange="applyFilters()" class="w-full bg-transparent border-none text-xs font-bold px-3 py-1.5 focus:ring-0 cursor-pointer appearance-none truncate pr-6"></select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-2.5 text-[10px] text-slate-400 pointer-events-none"></i>
+            </div>
+            <div class="w-[1px] h-4 bg-slate-300 mx-1"></div>
+            <div class="relative w-24">
+                <select id="yearFilter" onchange="applyFilters()" class="w-full bg-transparent border-none text-xs font-bold px-3 py-1.5 focus:ring-0 cursor-pointer appearance-none pr-6"></select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-2.5 text-[10px] text-slate-400 pointer-events-none"></i>
+            </div>
+            <div class="w-[1px] h-4 bg-slate-300 mx-1"></div>
+            <div class="relative w-24">
+                <select id="monthFilter" onchange="applyFilters()" class="w-full bg-transparent border-none text-xs font-bold px-3 py-1.5 focus:ring-0 cursor-pointer appearance-none pr-6">
+                    <option value="ALL">Cả năm</option>
+                    <option value="01">Tháng 1</option><option value="02">Tháng 2</option><option value="03">Tháng 3</option>
+                    <option value="04">Tháng 4</option><option value="05">Tháng 5</option><option value="06">Tháng 6</option>
+                    <option value="07">Tháng 7</option><option value="08">Tháng 8</option><option value="09">Tháng 9</option>
+                    <option value="10">Tháng 10</option><option value="11">Tháng 11</option><option value="12">Tháng 12</option>
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-2.5 text-[10px] text-slate-400 pointer-events-none"></i>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            {% if session.role != 'manager' %}
+            <button onclick="openAddTicketModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md shadow-indigo-500/20 flex items-center gap-1.5">
+                <i class="fa-solid fa-plus text-[11px]"></i> Thêm Ticket
+            </button>
+            {% endif %}
+            <button onclick="manualRefresh()" class="bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-indigo-100 transition shadow-sm flex items-center gap-1">
+                <i class="fa-solid fa-rotate" id="refreshSpinIcon"></i> Làm mới
+            </button>
+            <button onclick="exportExcel()" class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-emerald-100 transition shadow-sm flex items-center">
+                <i class="fa-solid fa-download mr-1"></i> Excel
+            </button>
+        </div>
+    </div>
+</header>

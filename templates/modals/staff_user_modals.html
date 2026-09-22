@@ -1,0 +1,55 @@
+<!-- Modal Sửa IT -->
+<div id="editITModal" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center backdrop-blur-sm transition-all duration-300">
+    <div class="bg-white p-8 rounded-3xl w-[450px] shadow-2xl relative transform transition-all scale-95 opacity-0" id="editITModalContent">
+        <h3 class="text-xl font-black mb-6 uppercase text-slate-800 border-b pb-3 flex items-center">
+            <i class="fa-solid fa-user-gear text-indigo-600 mr-2"></i>Sửa IT #<span id="editITIdDisplay"></span>
+        </h3>
+        <input type="hidden" id="editITId">
+        <div class="space-y-4">
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Họ và Tên IT</label>
+                <input type="text" id="editITName" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Số điện thoại</label>
+                <input type="text" id="editITPhone" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0901234567...">
+            </div>
+        </div>
+        <div class="mt-8 flex justify-end gap-3">
+            <button onclick="closeEditITModal()" class="px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Hủy</button>
+            <button onclick="submitEditIT()" class="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition flex items-center">
+                <i class="fa-solid fa-floppy-disk mr-2"></i> Lưu thay đổi
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Sửa Khách Hàng -->
+<div id="editUserModal" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center backdrop-blur-sm transition-all duration-300">
+    <div class="bg-white p-8 rounded-3xl w-[450px] shadow-2xl relative transform transition-all scale-95 opacity-0" id="editUserModalContent">
+        <h3 class="text-xl font-black mb-6 uppercase text-slate-800 border-b pb-3 flex items-center">
+            <i class="fa-solid fa-user-pen text-emerald-600 mr-2"></i>Sửa Khách Hàng
+        </h3>
+        <input type="hidden" id="editUserId">
+        <div class="space-y-4">
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">ID Telegram</label>
+                <input type="text" id="editUserIdDisplay" readonly class="w-full border border-slate-100 bg-slate-50 p-3 rounded-xl text-xs font-mono font-bold text-slate-400 outline-none">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Họ và Tên Khách</label>
+                <input type="text" id="editUserName" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Phòng Ban</label>
+                <select id="editUserDept" class="w-full border border-slate-200 p-3 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"></select>
+            </div>
+        </div>
+        <div class="mt-8 flex justify-end gap-3">
+            <button onclick="closeEditUserModal()" class="px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Hủy</button>
+            <button onclick="submitEditUser()" class="px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 transition flex items-center">
+                <i class="fa-solid fa-floppy-disk mr-2"></i> Lưu thay đổi
+            </button>
+        </div>
+    </div>
+</div>
