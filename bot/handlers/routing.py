@@ -21,6 +21,13 @@ def register_routing_handlers(current_bot):
     def handle_all_messages(message):
         if message.chat.id == bot_config.GROUP_IT_ID: 
             try:
+                member = current_bot.get_chat_member(message.chat.id, message.from_user.id)
+                if member.status in ['creator', 'administrator']:
+                    return  # Giữ lại tin nhắn của Admin / Chủ nhóm Telegram
+            except Exception:
+                pass
+
+            try:
                 current_bot.delete_message(message.chat.id, message.message_id)
             except Exception:
                 pass
