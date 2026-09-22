@@ -43,8 +43,6 @@ def get_departments_keyboard(depts, page=1, per_page=6):
         else:
             nav_buttons.append(types.InlineKeyboardButton("⏹️", callback_data="noop"))
             
-        nav_buttons.append(types.InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="noop"))
-        
         if page < total_pages:
             nav_buttons.append(types.InlineKeyboardButton("Sau ➡️", callback_data=f"deptpage_{page+1}"))
         else:
@@ -52,4 +50,10 @@ def get_departments_keyboard(depts, page=1, per_page=6):
             
         markup.row(*nav_buttons)
         
+    return markup
+
+def get_departments_reply_keyboard(depts):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, row_width=2)
+    buttons = [types.KeyboardButton(d_name) for _, d_name in depts]
+    markup.add(*buttons)
     return markup

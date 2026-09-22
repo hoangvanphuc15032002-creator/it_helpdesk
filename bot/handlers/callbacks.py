@@ -7,7 +7,7 @@ import config.settings as bot_config
 from database.connection import connect_db
 from database.repository import set_state, get_state, clear_state
 from utils.helpers import get_adjusted_time, safe_edit_message, truncate_text
-from bot.keyboards import get_rating_keyboard, get_report_keyboard, get_departments_keyboard
+from bot.keyboards import get_rating_keyboard, get_report_keyboard, get_departments_keyboard, get_departments_reply_keyboard
 
 def register_callback_handlers(current_bot):
 
@@ -49,22 +49,19 @@ def register_callback_handlers(current_bot):
             try:
                 cursor.execute('SELECT name FROM users WHERE user_id = ?', (call.from_user.id,))
                 user = cursor.fetchone()
-                if user:
-                    set_state(call.from_user.id, 'ask_dept', user[0])
-                    
-                    cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
-                    depts = cursor.fetchall()
-                    if depts:
-                        markup = get_departments_keyboard(depts, page=1, per_page=6)
-                        try:
-                            current_bot.edit_message_text(f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới (hoặc gõ trực tiếp):", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
-                        except Exception:
-                            current_bot.send_message(call.message.chat.id, f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới (hoặc gõ trực tiếp):", reply_markup=markup, parse_mode="Markdown")
-                    else:
-                        try:
-                            current_bot.edit_message_text("🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:", chat_id=call.message.chat.id, message_id=call.message.message_id)
-                        except Exception:
-                            current_bot.send_message(call.message.chat.id, "🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:")
+                user_name = user[0] if user else (call.from_user.full_name or "Bạn")
+                set_state(call.from_user.id, 'ask_dept', user_name)
+                
+                cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
+                depts = cursor.fetchall()
+                if depts:
+                    reply_kb = get_departments_reply_keyboard(depts)
+                    try:
+                        current_bot.send_message(call.message.chat.id, f"🔄 Đang cập nhật cho **{user_name}**\n\n🏢 **Vui lòng chọn Phòng ban mới ở bàn phím bên dưới:**", reply_markup=reply_kb, parse_mode="Markdown")
+                    except Exception:
+                        current_bot.send_message(call.message.chat.id, f"🔄 Đang cập nhật cho {user_name}\n\n🏢 Vui lòng chọn Phòng ban mới ở bàn phím bên dưới:", reply_markup=reply_kb)
+                else:
+                    current_bot.send_message(call.message.chat.id, "🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:")
             finally:
                 conn.close()
             return

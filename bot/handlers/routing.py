@@ -8,7 +8,7 @@ import config.settings as bot_config
 from database.connection import connect_db
 from database.repository import set_state, get_state, clear_state
 from utils.helpers import get_adjusted_time, safe_send_content, send_ticket_to_group
-from bot.keyboards import get_report_keyboard, get_departments_keyboard
+from bot.keyboards import get_report_keyboard, get_departments_keyboard, get_departments_reply_keyboard
 
 processed_msg_ids = set()
 user_last_ticket_time = {}
@@ -243,16 +243,14 @@ def register_routing_handlers(current_bot):
                     cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                     depts = cursor.fetchall()
                     if depts:
-                        markup = get_departments_keyboard(depts, page=1, per_page=6)
+                        reply_kb = get_departments_reply_keyboard(depts)
+                        msg_text = f"👋 Chào **{user_name}**!\n\n🏢 **Vui lòng bấm chọn Phòng ban của bạn ở bàn phím bên dưới:**\n*(Hoặc gõ trực tiếp tên phòng ban nếu không thấy)*"
                         try:
-                            current_bot.send_message(sender_id, f"👋 Chào **{user_name}**!\nVui lòng chọn **Phòng ban** của bạn bên dưới (hoặc gõ trực tiếp tên phòng ban):", reply_markup=markup, parse_mode="Markdown")
+                            current_bot.send_message(sender_id, msg_text, reply_markup=reply_kb, parse_mode="Markdown")
                         except Exception as e:
-                            print(f"⚠️ Lỗi gửi danh sách phòng ban Markdown: {e}")
-                            try:
-                                current_bot.send_message(sender_id, f"👋 Chào {user_name}!\nVui lòng chọn Phòng ban của bạn bên dưới (hoặc gõ trực tiếp tên phòng ban):", reply_markup=markup)
-                            except Exception as e2:
-                                print(f"⚠️ Lỗi gửi danh sách phòng ban plain text: {e2}")
-                                current_bot.send_message(sender_id, f"👋 Chào {user_name}! 🏢 Nhập tên Phòng ban của bạn:")
+                            print(f"⚠️ Lỗi gửi danh sách phòng ban: {e}")
+                            clean_text = f"👋 Chào {user_name}!\n\n🏢 Vui lòng bấm chọn Phòng ban của bạn ở bàn phím bên dưới:"
+                            current_bot.send_message(sender_id, clean_text, reply_markup=reply_kb)
                     else:
                         current_bot.send_message(sender_id, f"👋 Chào {user_name}! 🏢 Nhập tên Phòng ban của bạn:")
                 finally:
