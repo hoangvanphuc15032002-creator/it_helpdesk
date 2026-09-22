@@ -1,24 +1,13 @@
 version: '3.8'
 
 services:
-  # TIẾN TRÌNH 1: GIAO DIỆN WEB DASHBOARD
-  web-dashboard:
+  # HỆ THỐNG IT HELPDESK UNIFIED SERVICE (WEB DASHBOARD + TELEGRAM BOT + WATCHDOG)
+  it-helpdesk:
     build: .
-    container_name: it_helpdesk_web
-    command: python app.py
+    container_name: it_helpdesk_system
+    command: python main.py
     ports:
       - "8080:8080"
-    volumes:
-      - .:/app
-    restart: always
-    environment:
-      - PYTHONUNBUFFERED=1
-
-  # TIẾN TRÌNH 2: BOT TELEGRAM
-  telegram-bot:
-    build: .
-    container_name: it_helpdesk_bot
-    command: python bot.py
     volumes:
       - .:/app
     restart: always
