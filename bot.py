@@ -104,7 +104,7 @@ def sync_hubs_with_db():
                     
                 last_checked_update_ts = current_ts
 
-                cursor.execute("SELECT id, status, user_name, dept, issue, it_name, support_it_names, group_msg_id, it_id, it_msg_id, topic_id FROM tickets ORDER BY id DESC LIMIT 1000")
+                cursor.execute("SELECT id, status, user_name, dept, issue, it_name, support_it_names, group_msg_id, it_id, it_msg_id, topic_id, user_id FROM tickets ORDER BY id DESC LIMIT 1000")
                 rows = cursor.fetchall()
                 current_db_keys = set()
                 
@@ -120,6 +120,7 @@ def sync_hubs_with_db():
                     it_id_db = row[8]
                     it_msg_id_db = row[9]
                     topic_id_db = row[10]
+                    user_id_db = row[11]
                     
                     current_db_keys.add(t_id)
                     current_state = (status, user_name, dept, issue, it_name, support_it_names, it_id_db)
@@ -152,40 +153,36 @@ def sync_hubs_with_db():
                                     if participants:
                                         cursor.execute("DELETE FROM active_sessions WHERE ticket_id = ?", (t_id,))
                                         conn.commit()
-                                        for p_id, role, p_topic in participants:
-                                            try:
-                                                if role in ['main', 'support']:
-                                                    target_topic = p_topic if p_topic else (topic_id_db if role == 'main' else None)
-                                                    if target_topic:
-                                                        cursor.execute("SELECT workspace_group_id FROM it_staff WHERE it_id = ?", (p_id,))
-                                                        ws_row = cursor.fetchone()
-                                                        if ws_row and ws_row[0]:
-                                                            try: bot_config.bot.edit_forum_topic(chat_id=ws_row[0], message_thread_id=target_topic, name=f"✅ [ĐÃ XONG] #{t_id} - {user_name}"[:120])
-                                                            except: pass
-                                                            try: bot_config.bot.send_message(ws_row[0], f"Ticket đã được đóng từ Web Dashboard.", message_thread_id=target_topic)
-                                                            except: pass
-                                                            try: bot_config.bot.close_forum_topic(chat_id=ws_row[0], message_thread_id=target_topic)
-                                                            except: pass
-                                                    else:
-                                                        try: bot_config.bot.send_message(p_id, f"🎉 Ticket **#{t_id}** đã được đóng từ Web Dashboard.")
-                                                        except: pass
-                                                elif role == 'customer':
-                                                    try: bot_config.bot.send_message(p_id, f"✅ **Sự cố của bạn đã hoàn tất.**\nVui lòng đánh giá dịch vụ:", reply_markup=get_rating_keyboard(t_id), parse_mode="Markdown")
-                                                    except: pass
-                                                    try: bot_config.bot.send_message(p_id, "👇 Báo sự cố khác:", reply_markup=get_report_keyboard())
-                                                    except: pass
-                                            except: pass
                                     else:
-                                        if topic_id_db and it_id_db:
-                                            cursor.execute("SELECT workspace_group_id FROM it_staff WHERE it_id = ?", (it_id_db,))
-                                            ws_row = cursor.fetchone()
-                                            if ws_row and ws_row[0]:
-                                                try: bot_config.bot.edit_forum_topic(chat_id=ws_row[0], message_thread_id=topic_id_db, name=f"✅ [ĐÃ XONG] #{t_id} - {user_name}"[:120])
+                                        participants = []
+                                        if it_id_db:
+                                            participants.append((it_id_db, 'main', topic_id_db))
+                                        if user_id_db and str(user_id_db) != '0':
+                                            participants.append((user_id_db, 'customer', None))
+
+                                    for p_id, role, p_topic in participants:
+                                        try:
+                                            if role in ['main', 'support']:
+                                                target_topic = p_topic if p_topic else (topic_id_db if role == 'main' else None)
+                                                if target_topic:
+                                                    cursor.execute("SELECT workspace_group_id FROM it_staff WHERE it_id = ?", (p_id,))
+                                                    ws_row = cursor.fetchone()
+                                                    if ws_row and ws_row[0]:
+                                                        try: bot_config.bot.edit_forum_topic(chat_id=ws_row[0], message_thread_id=target_topic, name=f"✅ [ĐÃ XONG] #{t_id} - {user_name}"[:120])
+                                                        except: pass
+                                                        try: bot_config.bot.send_message(ws_row[0], f"Ticket đã được đóng từ Web Dashboard.", message_thread_id=target_topic)
+                                                        except: pass
+                                                        try: bot_config.bot.close_forum_topic(chat_id=ws_row[0], message_thread_id=target_topic)
+                                                        except: pass
+                                                else:
+                                                    try: bot_config.bot.send_message(p_id, f"🎉 Ticket **#{t_id}** đã được đóng từ Web Dashboard.")
+                                                    except: pass
+                                            elif role == 'customer':
+                                                try: bot_config.bot.send_message(p_id, f"✅ **Sự cố của bạn đã hoàn tất.**\nVui lòng đánh giá dịch vụ:", reply_markup=get_rating_keyboard(t_id), parse_mode="Markdown")
                                                 except: pass
-                                                try: bot_config.bot.send_message(ws_row[0], f"Ticket đã được đóng từ Web Dashboard.", message_thread_id=topic_id_db)
+                                                try: bot_config.bot.send_message(p_id, "👇 Báo sự cố khác:", reply_markup=get_report_keyboard())
                                                 except: pass
-                                                try: bot_config.bot.close_forum_topic(chat_id=ws_row[0], message_thread_id=topic_id_db)
-                                                except: pass
+                                        except: pass
                                 else:
                                     if g_msg_id:
                                         sup_text = f"\n👨‍🔧 **Hỗ trợ:** {support_it_names}" if support_it_names else ""
