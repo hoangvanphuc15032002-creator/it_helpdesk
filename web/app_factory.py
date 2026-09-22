@@ -64,7 +64,7 @@ def create_app():
     
     init_web_db()
     
-    from web.routes import register_routes
-    register_routes(app)
+    from web.blueprints import register_blueprints
+    register_blueprints(app)
     
     return app
