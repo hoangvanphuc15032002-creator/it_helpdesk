@@ -344,12 +344,32 @@ def register_command_handlers(current_bot):
         msg = current_bot.send_message(user_id, "📝 **Mời bạn mô tả lỗi:**\n*(Hoặc nhấn nút Hủy)*", reply_markup=markup, parse_mode="Markdown")
         set_state(user_id, 'waiting_for_issue', str(msg.message_id))
 
+    @current_bot.message_handler(commands=['reset', 'dangky', 'register'])
+    def reset_user_profile(message):
+        if message.chat.type != 'private':
+            return
+        user_id = message.from_user.id
+        conn = connect_db()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM user_states_db WHERE user_id = ?", (user_id,))
+            conn.commit()
+        finally:
+            conn.close()
+        set_state(user_id, 'ask_name')
+        try:
+            current_bot.send_message(user_id, "🔄 **ĐÃ RESET THÔNG TIN TÀI KHOẢN!**\n\n👋 Vui lòng nhập lại **Họ và Tên** của bạn:", parse_mode="Markdown")
+        except Exception:
+            current_bot.send_message(user_id, "🔄 ĐÃ RESET THÔNG TIN TÀI KHOẢN!\n\n👋 Vui lòng nhập lại Họ và Tên của bạn:")
+
     @current_bot.message_handler(commands=['help', 'huongdan'])
     def help_command(message):
         text = (
             "📖 **HƯỚNG DẪN SỬ DỤNG BOT IT HELPDESK**\n\n"
             "👤 **Dành cho Khách hàng:**\n"
             "• `/start` - Khởi động lại Bot & Báo lỗi mới\n"
+            "• `/reset` hoặc `/dangky` - Đăng ký lại Họ tên & Phòng ban từ đầu\n"
             "• `/report` hoặc `/baoloi` - Nhập mô tả báo sự cố khẩn cấp\n"
             "• `/giaicuu` - Reset kết nối khi gặp sự cố\n\n"
             "👨‍💻 **Dành cho Nhân sự IT:**\n"

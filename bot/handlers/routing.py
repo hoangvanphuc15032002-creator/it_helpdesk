@@ -243,14 +243,18 @@ def register_routing_handlers(current_bot):
                     cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                     depts = cursor.fetchall()
                     if depts:
+                        markup = get_departments_keyboard(depts, page=1, per_page=6)
                         try:
-                            markup = get_departments_keyboard(depts, page=1, per_page=6)
                             current_bot.send_message(sender_id, f"👋 Chào **{user_name}**!\nVui lòng chọn **Phòng ban** của bạn bên dưới (hoặc gõ trực tiếp tên phòng ban):", reply_markup=markup, parse_mode="Markdown")
                         except Exception as e:
-                            print(f"⚠️ Lỗi gửi danh sách phòng ban: {e}")
-                            current_bot.send_message(sender_id, f"👋 Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
+                            print(f"⚠️ Lỗi gửi danh sách phòng ban Markdown: {e}")
+                            try:
+                                current_bot.send_message(sender_id, f"👋 Chào {user_name}!\nVui lòng chọn Phòng ban của bạn bên dưới (hoặc gõ trực tiếp tên phòng ban):", reply_markup=markup)
+                            except Exception as e2:
+                                print(f"⚠️ Lỗi gửi danh sách phòng ban plain text: {e2}")
+                                current_bot.send_message(sender_id, f"👋 Chào {user_name}! 🏢 Nhập tên Phòng ban của bạn:")
                     else:
-                        current_bot.send_message(sender_id, f"👋 Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
+                        current_bot.send_message(sender_id, f"👋 Chào {user_name}! 🏢 Nhập tên Phòng ban của bạn:")
                 finally:
                     conn.close()
                 return
@@ -270,7 +274,10 @@ def register_routing_handlers(current_bot):
                 finally:
                     conn.close()
                 clear_state(sender_id)
-                current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                try:
+                    current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                except Exception:
+                    current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: {user_name}\n🏢 Phòng: {dept_name}", reply_markup=get_report_keyboard())
                 return
 
         conn = connect_db()
