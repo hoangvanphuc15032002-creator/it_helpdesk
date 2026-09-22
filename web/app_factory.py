@@ -59,14 +59,23 @@ def init_web_db():
     conn.close()
 
 def create_app():
-    root_dir = os.path.dirname(os.path.dirname(__file__))
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    static_dir = os.path.join(root_dir, 'static')
+    template_dir = os.path.join(root_dir, 'templates')
+
     app = Flask(
         __name__,
-        template_folder=os.path.join(root_dir, 'templates'),
-        static_folder=os.path.join(root_dir, 'static')
+        template_folder=template_dir,
+        static_folder=static_dir,
+        static_url_path='/static'
     )
     app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'Sieu_Bao_Mat_Helpdesk_2026')
     
+    @app.route('/static/<path:filename>')
+    def serve_static_files(filename):
+        from flask import send_from_directory
+        return send_from_directory(static_dir, filename)
+
     init_web_db()
     
     from web.blueprints import register_blueprints
