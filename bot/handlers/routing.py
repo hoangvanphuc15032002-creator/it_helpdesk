@@ -8,7 +8,7 @@ import config.settings as bot_config
 from database.connection import connect_db
 from database.repository import set_state, get_state, clear_state
 from utils.helpers import get_adjusted_time, safe_send_content, send_ticket_to_group
-from bot.keyboards import get_report_keyboard
+from bot.keyboards import get_report_keyboard, get_departments_keyboard
 
 processed_msg_ids = set()
 user_last_ticket_time = {}
@@ -262,24 +262,34 @@ def register_routing_handlers(current_bot):
                     cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                     depts = cursor.fetchall()
                     if depts:
-                        markup = types.InlineKeyboardMarkup(row_width=1) 
-                        for d_id, d_name in depts:
-                            markup.add(types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}"))
-                        current_bot.send_message(sender_id, f"Chào **{user_name}**! Vui lòng chọn **Phòng ban** của bạn bên dưới:", reply_markup=markup, parse_mode="Markdown")
+                        try:
+                            markup = get_departments_keyboard(depts, row_width=2)
+                            current_bot.send_message(sender_id, f"Chào **{user_name}**! Vui lòng chọn **Phòng ban** của bạn bên dưới:", reply_markup=markup, parse_mode="Markdown")
+                        except Exception as e:
+                            print(f"⚠️ Lỗi gửi danh sách phòng ban: {e}")
+                            try:
+                                markup_alt = get_departments_keyboard(depts[:25], row_width=1)
+                                current_bot.send_message(sender_id, f"Chào **{user_name}**! Vui lòng chọn **Phòng ban** của bạn bên dưới:", reply_markup=markup_alt, parse_mode="Markdown")
+                            except Exception:
+                                current_bot.send_message(sender_id, f"Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
                     else:
                         current_bot.send_message(sender_id, f"Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
                 elif step == 'ask_dept':
                     cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                     depts = cursor.fetchall()
+                    sent_ok = False
                     if depts:
-                        markup = types.InlineKeyboardMarkup(row_width=1) 
-                        for d_id, d_name in depts:
-                            markup.add(types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}"))
-                        current_bot.send_message(sender_id, "⚠️ **VUI LÒNG CHỌN PHÒNG BAN!**\n\n👉 Bạn hãy nhấn vào một trong các nút chọn **Phòng ban** bên dưới. Không tự gõ văn bản ở bước này!", reply_markup=markup, parse_mode="Markdown")
-                    else:
+                        try:
+                            markup = get_departments_keyboard(depts, row_width=2)
+                            current_bot.send_message(sender_id, "⚠️ **VUI LÒNG CHỌN PHÒNG BAN!**\n\n👉 Bạn hãy nhấn vào một trong các nút chọn **Phòng ban** bên dưới. Không tự gõ văn bản ở bước này!", reply_markup=markup, parse_mode="Markdown")
+                            sent_ok = True
+                        except Exception as e:
+                            print(f"⚠️ Lỗi gửi nhắc nhở chọn phòng ban: {e}")
+                    
+                    if not sent_ok or not depts:
                         dept_text = message.text.strip() if message.text else "Khác"
                         user_name = temp_data if (temp_data and temp_data != 'None') else (message.from_user.full_name or f"Khách #{sender_id}")
-                        cursor.execute('INSERT INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_text))
+                        cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_text))
                         conn.commit()
                         clear_state(sender_id)
                         current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_text}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")

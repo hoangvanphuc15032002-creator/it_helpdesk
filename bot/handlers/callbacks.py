@@ -7,7 +7,7 @@ import config.settings as bot_config
 from database.connection import connect_db
 from database.repository import set_state, get_state, clear_state
 from utils.helpers import get_adjusted_time, safe_edit_message, truncate_text
-from bot.keyboards import get_rating_keyboard, get_report_keyboard
+from bot.keyboards import get_rating_keyboard, get_report_keyboard, get_departments_keyboard
 
 def register_callback_handlers(current_bot):
 
@@ -55,12 +55,16 @@ def register_callback_handlers(current_bot):
                     cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                     depts = cursor.fetchall()
                     if depts:
-                        markup = types.InlineKeyboardMarkup(row_width=1) 
-                        for d_id, d_name in depts:
-                            markup.add(types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}"))
-                        current_bot.edit_message_text(f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+                        markup = get_departments_keyboard(depts, row_width=2)
+                        try:
+                            current_bot.edit_message_text(f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+                        except Exception:
+                            current_bot.send_message(call.message.chat.id, f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới:", reply_markup=markup, parse_mode="Markdown")
                     else:
-                        current_bot.edit_message_text("🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:", chat_id=call.message.chat.id, message_id=call.message.message_id)
+                        try:
+                            current_bot.edit_message_text("🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:", chat_id=call.message.chat.id, message_id=call.message.message_id)
+                        except Exception:
+                            current_bot.send_message(call.message.chat.id, "🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:")
             finally:
                 conn.close()
             return

@@ -17,3 +17,11 @@ def get_rating_keyboard(ticket_id):
     buttons = [types.InlineKeyboardButton(f"{i} ⭐", callback_data=f"rate_{ticket_id}_{i}") for i in range(1, 6)]
     markup.add(*buttons)
     return markup
+
+def get_departments_keyboard(depts, row_width=2):
+    markup = types.InlineKeyboardMarkup(row_width=row_width)
+    buttons = []
+    for d_id, d_name in depts:
+        buttons.append(types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}"))
+    markup.add(*buttons)
+    return markup
