@@ -55,11 +55,11 @@ def register_callback_handlers(current_bot):
                     cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                     depts = cursor.fetchall()
                     if depts:
-                        markup = get_departments_keyboard(depts, row_width=2)
+                        markup = get_departments_keyboard(depts, page=1, per_page=6)
                         try:
-                            current_bot.edit_message_text(f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+                            current_bot.edit_message_text(f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới (hoặc gõ trực tiếp):", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
                         except Exception:
-                            current_bot.send_message(call.message.chat.id, f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới:", reply_markup=markup, parse_mode="Markdown")
+                            current_bot.send_message(call.message.chat.id, f"🔄 Đang cập nhật cho **{user[0]}**\nMời bạn chọn **Phòng ban** mới (hoặc gõ trực tiếp):", reply_markup=markup, parse_mode="Markdown")
                     else:
                         try:
                             current_bot.edit_message_text("🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:", chat_id=call.message.chat.id, message_id=call.message.message_id)
@@ -92,7 +92,7 @@ def register_callback_handlers(current_bot):
                 cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                 depts = cursor.fetchall()
                 if depts:
-                    markup = get_departments_keyboard(depts, page=target_page, per_page=10)
+                    markup = get_departments_keyboard(depts, page=target_page, per_page=6)
                     try:
                         current_bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
                     except Exception:

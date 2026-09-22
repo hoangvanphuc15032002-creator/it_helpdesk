@@ -263,7 +263,7 @@ def register_routing_handlers(current_bot):
                     depts = cursor.fetchall()
                     if depts:
                         try:
-                            markup = get_departments_keyboard(depts, page=1, per_page=10)
+                            markup = get_departments_keyboard(depts, page=1, per_page=6)
                             current_bot.send_message(sender_id, f"Chào **{user_name}**! Vui lòng chọn **Phòng ban** của bạn bên dưới (hoặc gõ trực tiếp tên phòng ban):", reply_markup=markup, parse_mode="Markdown")
                         except Exception as e:
                             print(f"⚠️ Lỗi gửi danh sách phòng ban: {e}")
@@ -281,7 +281,7 @@ def register_routing_handlers(current_bot):
                         dept_name = dept_text
                         
                     user_name = temp_data if (temp_data and temp_data != 'None') else (message.from_user.full_name or f"Khách #{sender_id}")
-                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_text))
+                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
                     conn.commit()
                     clear_state(sender_id)
                     current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")

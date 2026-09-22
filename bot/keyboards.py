@@ -20,8 +20,8 @@ def get_rating_keyboard(ticket_id):
 
 import math
 
-def get_departments_keyboard(depts, page=1, per_page=10):
-    markup = types.InlineKeyboardMarkup(row_width=2)
+def get_departments_keyboard(depts, page=1, per_page=6):
+    markup = types.InlineKeyboardMarkup(row_width=1)
     total_depts = len(depts)
     if total_depts == 0:
         return markup
@@ -33,8 +33,8 @@ def get_departments_keyboard(depts, page=1, per_page=10):
     end_idx = start_idx + per_page
     page_depts = depts[start_idx:end_idx]
     
-    buttons = [types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}") for d_id, d_name in page_depts]
-    markup.add(*buttons)
+    for d_id, d_name in page_depts:
+        markup.add(types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}"))
     
     if total_pages > 1:
         nav_buttons = []
