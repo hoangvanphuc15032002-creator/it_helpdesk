@@ -125,20 +125,19 @@ def register_callback_handlers(current_bot):
                         user_name = u_row[0]
                     cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
                     conn.commit()
-                    clear_state(sender_id)
-
-                    current_msg_id = call.message.message_id
-                    for m_id in msg_ids:
-                        if m_id != current_msg_id:
-                            try:
-                                current_bot.delete_message(call.message.chat.id, m_id)
-                            except Exception:
-                                pass
+                    # Delete ALL department chunk messages
+                    all_to_delete = set(msg_ids)
+                    all_to_delete.add(call.message.message_id)
+                    for m_id in all_to_delete:
+                        try:
+                            current_bot.delete_message(call.message.chat.id, m_id)
+                        except Exception:
+                            pass
 
                     try:
-                        current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=current_msg_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
-                    except Exception:
                         current_bot.send_message(call.message.chat.id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                    except Exception:
+                        current_bot.send_message(call.message.chat.id, f"✅ Đã lưu thông tin!\n👤 Tên: {user_name}\n🏢 Phòng ban: {dept_name}", reply_markup=get_report_keyboard())
             finally:
                 conn.close()
             return

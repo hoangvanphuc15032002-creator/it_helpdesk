@@ -43,7 +43,7 @@ def config_watchdog():
                     time.sleep(3) 
                 bot_config.TOKEN = new_token
                 bot_config.GROUP_IT_ID = new_group
-                bot_config.bot = telebot.TeleBot(bot_config.TOKEN)
+                bot_config.bot = telebot.TeleBot(bot_config.TOKEN, num_threads=30)
                 setup_bot_handlers(bot_config.bot)
                 sync_tickets_to_new_group(bot_config.bot, bot_config.GROUP_IT_ID)
                 

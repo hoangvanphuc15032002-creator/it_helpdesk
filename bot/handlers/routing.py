@@ -10,7 +10,9 @@ from database.repository import set_state, get_state, clear_state
 from utils.helpers import get_adjusted_time, safe_send_content, send_ticket_to_group
 from bot.keyboards import get_report_keyboard, get_departments_keyboard, get_departments_reply_keyboard, send_department_chunks
 
-processed_msg_ids = set()
+from collections import OrderedDict
+
+processed_msg_ids = OrderedDict()
 user_last_ticket_time = {}
 
 ALL_CONTENT_TYPES = ['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker', 'animation', 'video_note', 'location', 'contact']
@@ -113,9 +115,9 @@ def register_routing_handlers(current_bot):
         msg_key = (message.chat.id, message.message_id)
         if msg_key in processed_msg_ids:
             return
-        processed_msg_ids.add(msg_key)
+        processed_msg_ids[msg_key] = True
         if len(processed_msg_ids) > 2000:
-            processed_msg_ids.clear()
+            processed_msg_ids.popitem(last=False)
 
         # 1. State machine handling for registration / onboarding / issue creation FIRST
         step, temp_data = get_state(sender_id)
@@ -163,6 +165,17 @@ def register_routing_handlers(current_bot):
                 dept_text = message.text.strip() if (message.text and message.content_type == 'text') else "Khác"
                 user_name = (temp_data.split('|')[0] if temp_data and temp_data != 'None' else None) or (message.from_user.full_name or f"Khách #{sender_id}")
                 
+                if temp_data and '|' in temp_data:
+                    try:
+                        m_ids = [int(x) for x in temp_data.split('|')[1].split(',') if x.strip().isdigit()]
+                        for m_id in m_ids:
+                            try:
+                                current_bot.delete_message(sender_id, m_id)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
                 conn = connect_db()
                 try:
                     cursor = conn.cursor()
