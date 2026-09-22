@@ -23,7 +23,8 @@ def register_callback_handlers(current_bot):
                 current_bot.edit_message_text("📝 **Mời bạn mô tả lỗi:**\n*(Hoặc nhấn nút Hủy)*", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
                 set_state(call.from_user.id, 'waiting_for_issue', str(call.message.message_id))
             except Exception: 
-                set_state(call.from_user.id, 'waiting_for_issue')
+                msg = current_bot.send_message(call.message.chat.id, "📝 **Mời bạn mô tả lỗi:**\n*(Hoặc nhấn nút Hủy)*", reply_markup=markup, parse_mode="Markdown")
+                set_state(call.from_user.id, 'waiting_for_issue', str(msg.message_id))
             return
 
         if call.data == 'cancelReport':
@@ -35,7 +36,7 @@ def register_callback_handlers(current_bot):
             try:
                 current_bot.edit_message_text("✅ Đã hủy.", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard())
             except Exception:
-                pass
+                current_bot.send_message(call.message.chat.id, "✅ Đã hủy.", reply_markup=get_report_keyboard())
             return
 
         if call.data == 'changeDept':
@@ -492,19 +493,43 @@ def register_callback_handlers(current_bot):
                     bot_config.ticket_last_status[int(ticket_id)] = 'Mới'
 
             elif action == 'done':
+                cursor.execute("SELECT status, it_id, user_name, dept, issue, it_name, support_it_names, group_support_msg_id, group_msg_id, topic_id, user_id FROM tickets WHERE id = ?", (ticket_id,))
+                res = cursor.fetchone()
+                
+                if not res:
+                    try:
+                        current_bot.answer_callback_query(call.id, "❌ Không tìm thấy Ticket!", show_alert=True)
+                    except Exception:
+                        current_bot.send_message(call.message.chat.id, "❌ Không tìm thấy Ticket!")
+                    return
+
+                ticket_status, main_it_id = res[0], res[1]
+                if ticket_status == 'Hoàn thành':
+                    try:
+                        current_bot.answer_callback_query(call.id, "ℹ️ Ticket này đã hoàn thành trước đó!", show_alert=True)
+                    except Exception:
+                        current_bot.send_message(call.message.chat.id, f"ℹ️ Ticket #{ticket_id} đã hoàn thành trước đó.")
+                    return
+
                 cursor.execute("SELECT role FROM active_sessions WHERE user_id = ? AND ticket_id = ?", (it_id, ticket_id))
                 role_chk = cursor.fetchone()
                 
-                cursor.execute("SELECT it_id, user_name, dept, issue, it_name, support_it_names, group_support_msg_id, group_msg_id, topic_id, user_id FROM tickets WHERE id = ?", (ticket_id,))
-                res = cursor.fetchone()
-                
-                if not role_chk or role_chk[0] != 'main':
-                    if not res or res[0] is None or str(res[0]) != str(it_id):
-                        try:
-                            current_bot.answer_callback_query(call.id, "❌ Chỉ IT Làm Chính mới được Đóng Ticket!", show_alert=True)
-                        except Exception:
-                            pass
-                        return
+                is_authorized = False
+                if role_chk and role_chk[0] == 'main':
+                    is_authorized = True
+                elif main_it_id and str(main_it_id) == str(it_id):
+                    is_authorized = True
+                else:
+                    cursor.execute("SELECT it_real_name FROM it_staff WHERE it_id = ?", (it_id,))
+                    if cursor.fetchone():
+                        is_authorized = True
+
+                if not is_authorized:
+                    try:
+                        current_bot.answer_callback_query(call.id, "❌ Chỉ IT mới được Đóng Ticket!", show_alert=True)
+                    except Exception:
+                        current_bot.send_message(call.message.chat.id, "❌ Chỉ IT mới được Đóng Ticket!")
+                    return
 
                 cursor.execute("SELECT user_id, role, topic_id FROM active_sessions WHERE ticket_id = ?", (ticket_id,))
                 participants = cursor.fetchall()
@@ -520,31 +545,31 @@ def register_callback_handlers(current_bot):
                 except Exception:
                     pass
 
-                if res and res[6]: 
+                if res and res[7]: 
                     try:
-                        current_bot.delete_message(bot_config.GROUP_IT_ID, res[6])
+                        current_bot.delete_message(bot_config.GROUP_IT_ID, res[7])
                     except Exception:
                         pass
                 
-                if res and res[7]: 
+                if res and res[8]: 
                     try:
-                        current_bot.unpin_chat_message(chat_id=bot_config.GROUP_IT_ID, message_id=res[7])
+                        current_bot.unpin_chat_message(chat_id=bot_config.GROUP_IT_ID, message_id=res[8])
                     except Exception:
                         pass
 
                 if not participants and res:
-                    main_it_uid = res[0]
-                    cust_uid = res[9]
-                    topic_id_val = res[8]
+                    main_it_uid = res[1]
+                    cust_uid = res[10]
+                    topic_id_val = res[9]
                     if main_it_uid:
                         participants.append((main_it_uid, 'main', topic_id_val))
                     if cust_uid and str(cust_uid) != '0':
                         participants.append((cust_uid, 'customer', None))
 
-                cust_name = res[1] if res else "Khách"
+                cust_name = res[2] if res else "Khách"
                 for p_id, role, p_topic in participants:
                     if role in ['main', 'support']:
-                        target_topic = p_topic if p_topic else (res[8] if (res and role == 'main') else None)
+                        target_topic = p_topic if p_topic else (res[9] if (res and role == 'main') else None)
                         if target_topic:
                             cursor.execute("SELECT workspace_group_id FROM it_staff WHERE it_id = ?", (p_id,))
                             ws_row = cursor.fetchone()
@@ -554,7 +579,7 @@ def register_callback_handlers(current_bot):
                                 except Exception:
                                     pass
                                 try:
-                                    current_bot.send_message(ws_row[0], "🎉 Đã đóng Ticket thành công.", message_thread_id=target_topic)
+                                    current_bot.send_message(ws_row[0], f"🎉 Đã đóng Ticket #{ticket_id} thành công.", message_thread_id=target_topic)
                                 except Exception:
                                     pass
                                 try:
@@ -562,7 +587,7 @@ def register_callback_handlers(current_bot):
                                 except Exception:
                                     pass
                         else:
-                            msg = f"🎉 Đã đóng Ticket **#{ticket_id}**." if role == 'main' else f"🎉 Ticket **#{ticket_id}** đã được đóng bởi IT Chính."
+                            msg = f"🎉 Đã đóng Ticket **#{ticket_id}**." if role == 'main' else f"🎉 Ticket **#{ticket_id}** đã được đóng bởi IT."
                             try:
                                 current_bot.send_message(p_id, msg)
                             except Exception:
@@ -577,12 +602,15 @@ def register_callback_handlers(current_bot):
                 try:
                     current_bot.answer_callback_query(call.id, "✅ Đã đóng Ticket!")
                 except Exception:
-                    pass
+                    try:
+                        current_bot.send_message(call.message.chat.id, f"✅ **Đã hoàn thành Ticket #{ticket_id}!**")
+                    except Exception:
+                        pass
 
-                g_msg_id = res[7] if res and res[7] else (int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None)
+                g_msg_id = res[8] if res and res[8] else (int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None)
                 if g_msg_id and res:
-                    sup_text = f"\n👨‍🔧 **Hỗ trợ:** {res[5]}" if res[5] else ""
-                    text_fin = f"🚨 **YÊU CẦU #{ticket_id}**\n👤 Khách: {res[1]}\n🏢 Phòng: {res[2]}\n📝 Lỗi: {res[3]}\n\n✅ **Hoàn thành**\n👨‍💻 **IT Chính:** {res[4]}{sup_text}"
+                    sup_text = f"\n👨‍🔧 **Hỗ trợ:** {res[6]}" if res[6] else ""
+                    text_fin = f"🚨 **YÊU CẦU #{ticket_id}**\n👤 Khách: {res[2]}\n🏢 Phòng: {res[3]}\n📝 Lỗi: {res[4]}\n\n✅ **Hoàn thành**\n👨‍💻 **IT Chính:** {res[5]}{sup_text}"
                     safe_edit_message(current_bot, bot_config.GROUP_IT_ID, g_msg_id, text_fin)
 
         finally:
