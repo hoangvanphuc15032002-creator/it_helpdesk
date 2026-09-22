@@ -69,6 +69,38 @@ def register_callback_handlers(current_bot):
                 conn.close()
             return
 
+        if call.data == 'noop':
+            try:
+                current_bot.answer_callback_query(call.id)
+            except Exception:
+                pass
+            return
+
+        if call.data.startswith('deptpage_'):
+            try:
+                current_bot.answer_callback_query(call.id)
+            except Exception:
+                pass
+            try:
+                target_page = int(call.data.split('_')[1])
+            except Exception:
+                target_page = 1
+                
+            conn = connect_db()
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
+                depts = cursor.fetchall()
+                if depts:
+                    markup = get_departments_keyboard(depts, page=target_page, per_page=10)
+                    try:
+                        current_bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
+                    except Exception:
+                        pass
+            finally:
+                conn.close()
+            return
+
         if call.data.startswith('seldept_'):
             try:
                 current_bot.answer_callback_query(call.id, "Đã chọn phòng ban!")
@@ -89,7 +121,10 @@ def register_callback_handlers(current_bot):
                         cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
                         conn.commit()
                         clear_state(sender_id)
-                        current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                        try:
+                            current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                        except Exception:
+                            current_bot.send_message(call.message.chat.id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
                 finally:
                     conn.close()
             return
