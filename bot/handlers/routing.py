@@ -117,10 +117,10 @@ def register_routing_handlers(current_bot):
         if len(processed_msg_ids) > 2000:
             processed_msg_ids.clear()
 
-        # 1. State machine handling for registration / onboarding users FIRST
+        # 1. State machine handling for registration / onboarding / issue creation FIRST
         step, temp_data = get_state(sender_id)
         
-        if step in ['waiting_for_it_name', 'waiting_for_it_phone', 'ask_name', 'ask_dept']:
+        if step in ['waiting_for_it_name', 'waiting_for_it_phone', 'ask_name', 'ask_dept', 'waiting_for_issue']:
             if step == 'waiting_for_it_name':
                 set_state(sender_id, 'waiting_for_it_phone', message.text)
                 current_bot.send_message(sender_id, f"📱 Chào **{message.text}**, nhập hoặc chia sẻ **Số điện thoại** của bạn:", parse_mode="Markdown")
@@ -148,19 +148,20 @@ def register_routing_handlers(current_bot):
                     return
                 
                 user_name = message.text.strip()
-                set_state(sender_id, 'ask_dept', user_name)
-                
                 conn = connect_db()
                 try:
                     cursor = conn.cursor()
                     cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                     depts = cursor.fetchall()
-                    send_department_chunks(current_bot, sender_id, user_name, depts, chunk_size=15)
+                    msg_ids = send_department_chunks(current_bot, sender_id, user_name, depts, chunk_size=15)
+                    m_str = ",".join(map(str, msg_ids))
+                    set_state(sender_id, 'ask_dept', f"{user_name}|{m_str}")
                 finally:
                     conn.close()
                 return
             elif step == 'ask_dept':
                 dept_text = message.text.strip() if (message.text and message.content_type == 'text') else "Khác"
+                user_name = (temp_data.split('|')[0] if temp_data and temp_data != 'None' else None) or (message.from_user.full_name or f"Khách #{sender_id}")
                 
                 conn = connect_db()
                 try:
@@ -169,7 +170,6 @@ def register_routing_handlers(current_bot):
                     matched = cursor.fetchone()
                     dept_name = matched[0] if matched else dept_text
                     
-                    user_name = temp_data if (temp_data and temp_data != 'None') else (message.from_user.full_name or f"Khách #{sender_id}")
                     cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
                     conn.commit()
                 finally:
@@ -179,6 +179,65 @@ def register_routing_handlers(current_bot):
                     current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
                 except Exception:
                     current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: {user_name}\n🏢 Phòng: {dept_name}", reply_markup=get_report_keyboard())
+                return
+            elif step == 'waiting_for_issue':
+                conn = connect_db()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (sender_id,))
+                    user = cursor.fetchone()
+                    if not user:
+                        set_state(sender_id, 'ask_name')
+                        current_bot.send_message(sender_id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
+                        return
+
+                    cursor.execute("SELECT id FROM tickets WHERE user_id = ? AND status = 'Mới'", (sender_id,))
+                    pending_ticket = cursor.fetchone()
+                    if pending_ticket:
+                        current_bot.send_message(sender_id, f"⏳ Sự cố **#{pending_ticket[0]}** đang chờ tiếp nhận. Vui lòng không gửi thêm!", parse_mode="Markdown")
+                        return
+
+                    now = time.time()
+                    if sender_id in user_last_ticket_time and now - user_last_ticket_time[sender_id] < 3:
+                        return
+                    user_last_ticket_time[sender_id] = now
+
+                    clear_state(sender_id)
+
+                    if temp_data:
+                        try:
+                            current_bot.edit_message_reply_markup(chat_id=sender_id, message_id=int(temp_data), reply_markup=None)
+                        except Exception:
+                            pass
+
+                    issue_text = message.text or message.caption or "Gửi đính kèm"
+                    cursor.execute('INSERT INTO tickets (user_id, user_name, dept, issue, status, created_at) VALUES (?, ?, ?, ?, ?, ?)', (sender_id, user[0], user[1], issue_text, 'Mới', get_adjusted_time().strftime("%Y-%m-%d %H:%M:%S")))
+                    ticket_id = cursor.lastrowid
+                    conn.commit()
+                    
+                    current_bot.send_message(sender_id, "✅ **Đã gửi IT.** Vui lòng đợi.", parse_mode="Markdown")
+                    msg_to_it = f"🚨 **YÊU CẦU MỚI!**\n🆔 Mã: #{ticket_id}\n👤 Khách: {user[0]}\n🏢 Phòng: {user[1]}\n📝 Nội dung: {issue_text}"
+                    markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🤝 Nhận việc (Làm chính)", callback_data=f"claim_{ticket_id}"))
+                    
+                    photo_id = message.photo[-1].file_id if message.photo else None
+                    doc_id = message.document.file_id if message.document else None
+                    vid_id = message.video.file_id if message.video else None
+                    voice_id = message.voice.file_id if message.voice else None
+                    audio_id = message.audio.file_id if message.audio else None
+                    file_id = photo_id or doc_id or vid_id or voice_id or audio_id
+                    
+                    sent_msg = send_ticket_to_group(current_bot, bot_config.GROUP_IT_ID, message.content_type, file_id, msg_to_it, reply_markup=markup)
+
+                    if sent_msg:
+                        try:
+                            current_bot.pin_chat_message(chat_id=bot_config.GROUP_IT_ID, message_id=sent_msg.message_id, disable_notification=True)
+                        except Exception:
+                            pass
+                        cursor.execute("UPDATE tickets SET group_msg_id = ? WHERE id = ?", (sent_msg.message_id, ticket_id))
+                        conn.commit()
+                        bot_config.ticket_last_status[ticket_id] = 'Mới'
+                finally:
+                    conn.close()
                 return
 
         # 2. Check Active Ticket Sessions SECOND

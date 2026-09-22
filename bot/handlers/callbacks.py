@@ -50,11 +50,12 @@ def register_callback_handlers(current_bot):
                 cursor.execute('SELECT name FROM users WHERE user_id = ?', (call.from_user.id,))
                 user = cursor.fetchone()
                 user_name = user[0] if user else (call.from_user.full_name or "Bạn")
-                set_state(call.from_user.id, 'ask_dept', user_name)
                 
                 cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                 depts = cursor.fetchall()
-                send_department_chunks(current_bot, call.from_user.id, user_name, depts, chunk_size=15)
+                msg_ids = send_department_chunks(current_bot, call.from_user.id, user_name, depts, chunk_size=15)
+                m_str = ",".join(map(str, msg_ids))
+                set_state(call.from_user.id, 'ask_dept', f"{user_name}|{m_str}")
             finally:
                 conn.close()
             return
@@ -100,6 +101,17 @@ def register_callback_handlers(current_bot):
             sender_id = call.from_user.id
             step, temp_data = get_state(sender_id)
             
+            user_name = (call.from_user.full_name or f"Khách #{sender_id}")
+            msg_ids = []
+            if temp_data and temp_data != 'None':
+                parts = temp_data.split('|')
+                user_name = parts[0]
+                if len(parts) > 1 and parts[1]:
+                    try:
+                        msg_ids = [int(x) for x in parts[1].split(',') if x.strip().isdigit()]
+                    except Exception:
+                        pass
+
             conn = connect_db()
             cursor = conn.cursor()
             try:
@@ -109,12 +121,22 @@ def register_callback_handlers(current_bot):
                     dept_name = d_row[0]
                     cursor.execute('SELECT name FROM users WHERE user_id = ?', (sender_id,))
                     u_row = cursor.fetchone()
-                    user_name = temp_data if (temp_data and temp_data != 'None') else (u_row[0] if u_row else (call.from_user.full_name or f"Khách #{sender_id}"))
+                    if u_row and u_row[0]:
+                        user_name = u_row[0]
                     cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
                     conn.commit()
                     clear_state(sender_id)
+
+                    current_msg_id = call.message.message_id
+                    for m_id in msg_ids:
+                        if m_id != current_msg_id:
+                            try:
+                                current_bot.delete_message(call.message.chat.id, m_id)
+                            except Exception:
+                                pass
+
                     try:
-                        current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                        current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=current_msg_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
                     except Exception:
                         current_bot.send_message(call.message.chat.id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
             finally:
