@@ -354,6 +354,7 @@ def register_command_handlers(current_bot):
             cursor = conn.cursor()
             cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM user_states_db WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM active_sessions WHERE user_id = ?", (user_id,))
             conn.commit()
         finally:
             conn.close()

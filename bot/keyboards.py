@@ -57,3 +57,31 @@ def get_departments_reply_keyboard(depts):
     buttons = [types.KeyboardButton(d_name) for _, d_name in depts]
     markup.add(*buttons)
     return markup
+
+def send_department_chunks(bot, chat_id, user_name, depts, chunk_size=15):
+    total_depts = len(depts)
+    if total_depts == 0:
+        bot.send_message(chat_id, f"👋 Chào {user_name}! 🏢 Nhập tên Phòng ban của bạn:")
+        return
+
+    chunks = [depts[i:i + chunk_size] for i in range(0, total_depts, chunk_size)]
+    total_chunks = len(chunks)
+
+    for idx, chunk in enumerate(chunks, 1):
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for d_id, d_name in chunk:
+            markup.add(types.InlineKeyboardButton(d_name, callback_data=f"seldept_{d_id}"))
+        
+        if total_chunks > 1:
+            header = f"🏢 **Vui lòng chọn Phòng ban của bạn (Danh sách {idx}/{total_chunks}):**"
+        else:
+            header = f"🏢 **Vui lòng chọn Phòng ban của bạn bên dưới:**"
+            
+        if idx == 1:
+            header = f"👋 Chào **{user_name}**!\n\n" + header
+
+        try:
+            bot.send_message(chat_id, header, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            header_clean = header.replace("**", "").replace("*", "")
+            bot.send_message(chat_id, header_clean, reply_markup=markup)

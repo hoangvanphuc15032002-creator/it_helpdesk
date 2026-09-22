@@ -7,7 +7,7 @@ import config.settings as bot_config
 from database.connection import connect_db
 from database.repository import set_state, get_state, clear_state
 from utils.helpers import get_adjusted_time, safe_edit_message, truncate_text
-from bot.keyboards import get_rating_keyboard, get_report_keyboard, get_departments_keyboard, get_departments_reply_keyboard
+from bot.keyboards import get_rating_keyboard, get_report_keyboard, get_departments_keyboard, get_departments_reply_keyboard, send_department_chunks
 
 def register_callback_handlers(current_bot):
 
@@ -54,14 +54,7 @@ def register_callback_handlers(current_bot):
                 
                 cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
                 depts = cursor.fetchall()
-                if depts:
-                    reply_kb = get_departments_reply_keyboard(depts)
-                    try:
-                        current_bot.send_message(call.message.chat.id, f"🔄 Đang cập nhật cho **{user_name}**\n\n🏢 **Vui lòng chọn Phòng ban mới ở bàn phím bên dưới:**", reply_markup=reply_kb, parse_mode="Markdown")
-                    except Exception:
-                        current_bot.send_message(call.message.chat.id, f"🔄 Đang cập nhật cho {user_name}\n\n🏢 Vui lòng chọn Phòng ban mới ở bàn phím bên dưới:", reply_markup=reply_kb)
-                else:
-                    current_bot.send_message(call.message.chat.id, "🏢 Vui lòng nhập tên **Phòng ban** mới của bạn:")
+                send_department_chunks(current_bot, call.from_user.id, user_name, depts, chunk_size=15)
             finally:
                 conn.close()
             return
@@ -106,24 +99,26 @@ def register_callback_handlers(current_bot):
             dept_id = call.data[8:]
             sender_id = call.from_user.id
             step, temp_data = get_state(sender_id)
-            if step == 'ask_dept':
-                conn = connect_db()
-                cursor = conn.cursor()
-                try:
-                    cursor.execute("SELECT name FROM departments WHERE id = ?", (dept_id,))
-                    d_row = cursor.fetchone()
-                    if d_row:
-                        dept_name = d_row[0]
-                        user_name = temp_data if (temp_data and temp_data != 'None') else (call.from_user.full_name or f"Khách #{sender_id}")
-                        cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
-                        conn.commit()
-                        clear_state(sender_id)
-                        try:
-                            current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
-                        except Exception:
-                            current_bot.send_message(call.message.chat.id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
-                finally:
-                    conn.close()
+            
+            conn = connect_db()
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT name FROM departments WHERE id = ?", (dept_id,))
+                d_row = cursor.fetchone()
+                if d_row:
+                    dept_name = d_row[0]
+                    cursor.execute('SELECT name FROM users WHERE user_id = ?', (sender_id,))
+                    u_row = cursor.fetchone()
+                    user_name = temp_data if (temp_data and temp_data != 'None') else (u_row[0] if u_row else (call.from_user.full_name or f"Khách #{sender_id}"))
+                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
+                    conn.commit()
+                    clear_state(sender_id)
+                    try:
+                        current_bot.edit_message_text(f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                    except Exception:
+                        current_bot.send_message(call.message.chat.id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+            finally:
+                conn.close()
             return
 
         parts = call.data.split('_')
