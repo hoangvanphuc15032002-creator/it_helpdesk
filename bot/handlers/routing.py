@@ -229,6 +229,49 @@ def register_routing_handlers(current_bot):
                 clear_state(sender_id)
                 current_bot.send_message(sender_id, f"✅ Xác thực thành công!\n👤 {it_name} - 📞 {it_phone}")
                 return
+            elif step == 'ask_name':
+                if message.content_type != 'text' or not message.text or len(message.text.strip()) < 2:
+                    current_bot.send_message(sender_id, "⚠️ **Vui lòng nhập đúng Họ và Tên của bạn bằng văn bản!**")
+                    return
+                
+                user_name = message.text.strip()
+                set_state(sender_id, 'ask_dept', user_name)
+                
+                conn = connect_db()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
+                    depts = cursor.fetchall()
+                    if depts:
+                        try:
+                            markup = get_departments_keyboard(depts, page=1, per_page=6)
+                            current_bot.send_message(sender_id, f"👋 Chào **{user_name}**!\nVui lòng chọn **Phòng ban** của bạn bên dưới (hoặc gõ trực tiếp tên phòng ban):", reply_markup=markup, parse_mode="Markdown")
+                        except Exception as e:
+                            print(f"⚠️ Lỗi gửi danh sách phòng ban: {e}")
+                            current_bot.send_message(sender_id, f"👋 Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
+                    else:
+                        current_bot.send_message(sender_id, f"👋 Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
+                finally:
+                    conn.close()
+                return
+            elif step == 'ask_dept':
+                dept_text = message.text.strip() if (message.text and message.content_type == 'text') else "Khác"
+                
+                conn = connect_db()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT name FROM departments WHERE LOWER(name) LIKE ?", (f"%{dept_text.lower()}%",))
+                    matched = cursor.fetchone()
+                    dept_name = matched[0] if matched else dept_text
+                    
+                    user_name = temp_data if (temp_data and temp_data != 'None') else (message.from_user.full_name or f"Khách #{sender_id}")
+                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
+                    conn.commit()
+                finally:
+                    conn.close()
+                clear_state(sender_id)
+                current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                return
 
         conn = connect_db()
         try:
@@ -245,48 +288,8 @@ def register_routing_handlers(current_bot):
             conn.close()
 
         if not user:
-            conn = connect_db()
-            try:
-                cursor = conn.cursor()
-                if not step:
-                    set_state(sender_id, 'ask_name')
-                    current_bot.send_message(sender_id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
-                elif step == 'ask_name':
-                    if message.content_type != 'text' or not message.text or len(message.text.strip()) < 2:
-                        current_bot.send_message(sender_id, "⚠️ **Vui lòng nhập đúng Họ và Tên của bạn bằng văn bản!**")
-                        return
-                    
-                    user_name = message.text.strip()
-                    set_state(sender_id, 'ask_dept', user_name)
-                    
-                    cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
-                    depts = cursor.fetchall()
-                    if depts:
-                        try:
-                            markup = get_departments_keyboard(depts, page=1, per_page=6)
-                            current_bot.send_message(sender_id, f"Chào **{user_name}**! Vui lòng chọn **Phòng ban** của bạn bên dưới (hoặc gõ trực tiếp tên phòng ban):", reply_markup=markup, parse_mode="Markdown")
-                        except Exception as e:
-                            print(f"⚠️ Lỗi gửi danh sách phòng ban: {e}")
-                            current_bot.send_message(sender_id, f"Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
-                    else:
-                        current_bot.send_message(sender_id, f"Chào **{user_name}**! 🏢 Nhập tên **Phòng ban** của bạn:")
-                elif step == 'ask_dept':
-                    dept_text = message.text.strip() if (message.text and message.content_type == 'text') else "Khác"
-                    
-                    cursor.execute("SELECT name FROM departments WHERE LOWER(name) LIKE ?", (f"%{dept_text.lower()}%",))
-                    matched = cursor.fetchone()
-                    if matched:
-                        dept_name = matched[0]
-                    else:
-                        dept_name = dept_text
-                        
-                    user_name = temp_data if (temp_data and temp_data != 'None') else (message.from_user.full_name or f"Khách #{sender_id}")
-                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
-                    conn.commit()
-                    clear_state(sender_id)
-                    current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
-            finally:
-                conn.close()
+            set_state(sender_id, 'ask_name')
+            current_bot.send_message(sender_id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
             return
 
         conn = connect_db()
