@@ -117,7 +117,71 @@ def register_routing_handlers(current_bot):
         if len(processed_msg_ids) > 2000:
             processed_msg_ids.clear()
 
-        # Check Active Ticket Sessions FIRST before state machine!
+        # 1. State machine handling for registration / onboarding users FIRST
+        step, temp_data = get_state(sender_id)
+        
+        if step in ['waiting_for_it_name', 'waiting_for_it_phone', 'ask_name', 'ask_dept']:
+            if step == 'waiting_for_it_name':
+                set_state(sender_id, 'waiting_for_it_phone', message.text)
+                current_bot.send_message(sender_id, f"📱 Chào **{message.text}**, nhập hoặc chia sẻ **Số điện thoại** của bạn:", parse_mode="Markdown")
+                return
+            elif step == 'waiting_for_it_phone':
+                phone_text = message.text
+                if message.content_type == 'contact' and message.contact:
+                    phone_text = message.contact.phone_number
+                it_name, it_phone = temp_data, phone_text
+                if not it_phone:
+                    current_bot.send_message(sender_id, "⚠️ **Vui lòng nhập hoặc chia sẻ Số điện thoại của bạn!**")
+                    return
+                conn = connect_db()
+                try:
+                    conn.execute('INSERT OR REPLACE INTO it_staff (it_id, it_real_name, it_phone) VALUES (?, ?, ?)', (sender_id, it_name, it_phone))
+                    conn.commit()
+                finally:
+                    conn.close()
+                clear_state(sender_id)
+                current_bot.send_message(sender_id, f"✅ Xác thực thành công!\n👤 {it_name} - 📞 {it_phone}")
+                return
+            elif step == 'ask_name':
+                if message.content_type != 'text' or not message.text or len(message.text.strip()) < 2:
+                    current_bot.send_message(sender_id, "⚠️ **Vui lòng nhập đúng Họ và Tên của bạn bằng văn bản!**")
+                    return
+                
+                user_name = message.text.strip()
+                set_state(sender_id, 'ask_dept', user_name)
+                
+                conn = connect_db()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
+                    depts = cursor.fetchall()
+                    send_department_chunks(current_bot, sender_id, user_name, depts, chunk_size=15)
+                finally:
+                    conn.close()
+                return
+            elif step == 'ask_dept':
+                dept_text = message.text.strip() if (message.text and message.content_type == 'text') else "Khác"
+                
+                conn = connect_db()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT name FROM departments WHERE LOWER(name) LIKE ?", (f"%{dept_text.lower()}%",))
+                    matched = cursor.fetchone()
+                    dept_name = matched[0] if matched else dept_text
+                    
+                    user_name = temp_data if (temp_data and temp_data != 'None') else (message.from_user.full_name or f"Khách #{sender_id}")
+                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
+                    conn.commit()
+                finally:
+                    conn.close()
+                clear_state(sender_id)
+                try:
+                    current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                except Exception:
+                    current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: {user_name}\n🏢 Phòng: {dept_name}", reply_markup=get_report_keyboard())
+                return
+
+        # 2. Check Active Ticket Sessions SECOND
         conn = connect_db()
         has_active_session = False
         try:
@@ -203,70 +267,6 @@ def register_routing_handlers(current_bot):
 
         if has_active_session:
             return
-
-        # 3. State machine handling for non-active users (Onboarding / Reporting)
-        step, temp_data = get_state(sender_id)
-        
-        if step:
-            if step == 'waiting_for_it_name':
-                set_state(sender_id, 'waiting_for_it_phone', message.text)
-                current_bot.send_message(sender_id, f"📱 Chào **{message.text}**, nhập hoặc chia sẻ **Số điện thoại** của bạn:", parse_mode="Markdown")
-                return
-            elif step == 'waiting_for_it_phone':
-                phone_text = message.text
-                if message.content_type == 'contact' and message.contact:
-                    phone_text = message.contact.phone_number
-                it_name, it_phone = temp_data, phone_text
-                if not it_phone:
-                    current_bot.send_message(sender_id, "⚠️ **Vui lòng nhập hoặc chia sẻ Số điện thoại của bạn!**")
-                    return
-                conn = connect_db()
-                try:
-                    conn.execute('INSERT OR REPLACE INTO it_staff (it_id, it_real_name, it_phone) VALUES (?, ?, ?)', (sender_id, it_name, it_phone))
-                    conn.commit()
-                finally:
-                    conn.close()
-                clear_state(sender_id)
-                current_bot.send_message(sender_id, f"✅ Xác thực thành công!\n👤 {it_name} - 📞 {it_phone}")
-                return
-            elif step == 'ask_name':
-                if message.content_type != 'text' or not message.text or len(message.text.strip()) < 2:
-                    current_bot.send_message(sender_id, "⚠️ **Vui lòng nhập đúng Họ và Tên của bạn bằng văn bản!**")
-                    return
-                
-                user_name = message.text.strip()
-                set_state(sender_id, 'ask_dept', user_name)
-                
-                conn = connect_db()
-                try:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT id, name FROM departments ORDER BY name ASC")
-                    depts = cursor.fetchall()
-                    send_department_chunks(current_bot, sender_id, user_name, depts, chunk_size=15)
-                finally:
-                    conn.close()
-                return
-            elif step == 'ask_dept':
-                dept_text = message.text.strip() if (message.text and message.content_type == 'text') else "Khác"
-                
-                conn = connect_db()
-                try:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT name FROM departments WHERE LOWER(name) LIKE ?", (f"%{dept_text.lower()}%",))
-                    matched = cursor.fetchone()
-                    dept_name = matched[0] if matched else dept_text
-                    
-                    user_name = temp_data if (temp_data and temp_data != 'None') else (message.from_user.full_name or f"Khách #{sender_id}")
-                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
-                    conn.commit()
-                finally:
-                    conn.close()
-                clear_state(sender_id)
-                try:
-                    current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
-                except Exception:
-                    current_bot.send_message(sender_id, f"✅ Đã lưu thông tin!\n👤 Tên: {user_name}\n🏢 Phòng: {dept_name}", reply_markup=get_report_keyboard())
-                return
 
         conn = connect_db()
         try:
