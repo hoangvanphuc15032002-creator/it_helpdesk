@@ -59,7 +59,12 @@ def init_web_db():
     conn.close()
 
 def create_app():
-    app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates'))
+    root_dir = os.path.dirname(os.path.dirname(__file__))
+    app = Flask(
+        __name__,
+        template_folder=os.path.join(root_dir, 'templates'),
+        static_folder=os.path.join(root_dir, 'static')
+    )
     app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'Sieu_Bao_Mat_Helpdesk_2026')
     
     init_web_db()
