@@ -271,10 +271,10 @@
                                         </div>
                                     </div>
                                     <div class="flex items-center gap-2 shrink-0 ml-2">
-                                        <button onclick="openEditITModal('{{ it.it_id }}', '{{ it.it_real_name|e }}', '{{ it.it_phone or ''|e }}')" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-600 hover:text-white transition flex items-center gap-1 shadow-sm">
+                                        <button onclick="openEditITModal(this)" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-600 hover:text-white transition flex items-center gap-1 shadow-sm">
                                             <i class="fa-solid fa-pen-to-square"></i> Sửa
                                         </button>
-                                        <button onclick="deleteIT({{ it.it_id }})" class="px-2.5 py-1.5 bg-slate-100 text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-500 hover:text-white transition" title="Xóa IT này">
+                                        <button onclick="deleteIT(this)" class="px-2.5 py-1.5 bg-slate-100 text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-500 hover:text-white transition" title="Xóa IT này">
                                             <i class="fa-solid fa-trash-can"></i>
                                         </button>
                                     </div>
@@ -305,10 +305,10 @@
                                         </div>
                                     </div>
                                     <div class="flex items-center gap-2 shrink-0 ml-2">
-                                        <button onclick="openEditUserModal('{{ u.user_id }}', '{{ u.name|e }}', '{{ u.dept|e }}')" class="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold hover:bg-emerald-600 hover:text-white transition flex items-center gap-1 shadow-sm">
+                                        <button onclick="openEditUserModal(this)" class="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold hover:bg-emerald-600 hover:text-white transition flex items-center gap-1 shadow-sm">
                                             <i class="fa-solid fa-pen-to-square"></i> Sửa
                                         </button>
-                                        <button onclick="deleteUser({{ u.user_id }})" class="px-2.5 py-1.5 bg-slate-100 text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-500 hover:text-white transition" title="Xóa Khách này">
+                                        <button onclick="deleteUser(this)" class="px-2.5 py-1.5 bg-slate-100 text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-500 hover:text-white transition" title="Xóa Khách này">
                                             <i class="fa-solid fa-trash-can"></i>
                                         </button>
                                     </div>
@@ -651,6 +651,7 @@
             localStorage.setItem('activeTab', tabId);
         }
 
+        const CURRENT_ROLE = '{{ session.role }}';
         let allTickets = JSON.parse(document.getElementById('tickets-data').textContent || '[]');
         let dbDepts = JSON.parse(document.getElementById('departments-data').textContent || '[]');
         let allITStaff = JSON.parse(document.getElementById('it-staff-data').textContent || '[]');
@@ -664,13 +665,13 @@
 
             let savedTab = localStorage.getItem('activeTab') || 'dashboard';
             
-            {% if session.role == 'admin' %}
-            if (savedTab === 'dashboard') savedTab = 'depts';
-            {% endif %}
+            if (CURRENT_ROLE === 'admin') {
+                if (savedTab === 'dashboard') savedTab = 'depts';
+            }
             
-            {% if session.role == 'manager' %}
-            savedTab = 'dashboard';
-            {% endif %}
+            if (CURRENT_ROLE === 'manager') {
+                savedTab = 'dashboard';
+            }
             
             switchTab(savedTab);
             
@@ -692,9 +693,9 @@
 
             document.getElementById('monthFilter').value = 'ALL';
             
-            {% if session.role in ['superadmin', 'manager'] %}
-            applyFilters();
-            {% endif %}
+            if (['superadmin', 'manager'].includes(CURRENT_ROLE)) {
+                applyFilters();
+            }
 
             startLiveClock();
         };
@@ -739,9 +740,9 @@
                 if (data.it_staff) allITStaff = data.it_staff;
                 if (forceRefresh || JSON.stringify(data.tickets) !== JSON.stringify(allTickets)) {
                     allTickets = data.tickets; 
-                    {% if session.role in ['superadmin', 'manager'] %}
-                    applyFilters();
-                    {% endif %}
+                    if (['superadmin', 'manager'].includes(CURRENT_ROLE)) {
+                        applyFilters();
+                    }
                 }
             } catch(e) {}
         }
@@ -828,13 +829,13 @@
                 let supItStr = t.support_it_names ? `<br><span class="text-[9px] font-bold text-emerald-600 mt-1 inline-block bg-emerald-50 px-1.5 rounded">H/t: ${t.support_it_names}</span>` : '';
                 
                 let actionBtns = '';
-                {% if session.role != 'manager' %}
-                actionBtns = `
-                    <div class="hidden group-hover:flex justify-end gap-2 animate-fadeIn">
-                        <button onclick="openEditTicket(${t.id})" class="px-2 py-1 bg-slate-100 text-indigo-600 rounded hover:bg-indigo-100 transition" title="Sửa Ticket"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="deleteTicket(${t.id})" class="px-2 py-1 bg-slate-100 text-rose-500 rounded hover:bg-rose-100 transition" title="Xóa Ticket"><i class="fa-solid fa-trash"></i></button>
-                    </div>`;
-                {% endif %}
+                if (CURRENT_ROLE !== 'manager') {
+                    actionBtns = `
+                        <div class="hidden group-hover:flex justify-end gap-2 animate-fadeIn">
+                            <button onclick="openEditTicket(${t.id})" class="px-2 py-1 bg-slate-100 text-indigo-600 rounded hover:bg-indigo-100 transition" title="Sửa Ticket"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="deleteTicket(${t.id})" class="px-2 py-1 bg-slate-100 text-rose-500 rounded hover:bg-rose-100 transition" title="Xóa Ticket"><i class="fa-solid fa-trash"></i></button>
+                        </div>`;
+                }
 
                 let timeStr = `<span class="text-[10px] text-slate-400 font-bold block mb-1 group-hover:hidden">Tạo: ${t.created_at.substring(8, 16)}${t.completed_at ? `<br><span class="text-emerald-600 font-black">Xong: ${t.completed_at.substring(8, 16)}</span>` : ''}</span>`;
 
@@ -1172,7 +1173,8 @@
             }
         }
 
-        async function deleteIT(id) {
+        async function deleteIT(btn) {
+            const id = (typeof btn === 'object' && btn !== null) ? (btn.dataset.id || btn.closest('.it-item').dataset.id) : btn;
             if(confirm("⚠️ Chắc chắn xóa IT này khỏi danh sách? Lịch sử công việc cũ sẽ vẫn được giữ trong Ticket.")) {
                 const res = await fetch('/api/delete_it/'+id, {method: 'POST'});
                 const resData = await res.json();
@@ -1180,7 +1182,8 @@
             }
         }
 
-        async function deleteUser(id) {
+        async function deleteUser(btn) {
+            const id = (typeof btn === 'object' && btn !== null) ? (btn.dataset.id || btn.closest('.user-item').dataset.id) : btn;
             if(confirm("⚠️ Chắc chắn xóa Khách hàng này?")) {
                 const res = await fetch('/api/delete_user/'+id, {method: 'POST'});
                 const resData = await res.json();

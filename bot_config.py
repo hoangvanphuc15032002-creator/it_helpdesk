@@ -1,7 +1,5 @@
-ticket_last_status = {} 
-bot = None
-TOKEN = None
-GROUP_IT_ID = None
-TIME_OFFSET = 0  
-is_running = True
-last_reminder_msg_id = None
+"""
+Backward-compatibility facade for bot_config.
+Forwards all settings & state variables to config.settings.
+"""
+from config.settings import *

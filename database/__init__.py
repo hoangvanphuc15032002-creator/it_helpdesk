@@ -1,6 +1,5 @@
 """
-Backward-compatibility facade for bot_db.
-Forwards database functions to database package.
+Database Package Initialization
 """
 from database.connection import connect_db, get_db_connection
 from database.repository import (
