@@ -365,11 +365,17 @@ def register_routing_handlers(current_bot):
             cursor.execute("SELECT id FROM tickets WHERE user_id = ? AND status = 'Mới'", (sender_id,))
             pending_ticket = cursor.fetchone()
             if pending_ticket:
-                current_bot.send_message(sender_id, f"⏳ Sự cố **#{pending_ticket[0]}** đang chờ tiếp nhận. Vui lòng không gửi thêm!", parse_mode="Markdown")
+                try:
+                    current_bot.send_message(sender_id, f"⏳ Sự cố **#{pending_ticket[0]}** đang chờ tiếp nhận. Vui lòng không gửi thêm!", parse_mode="Markdown")
+                except Exception:
+                    current_bot.send_message(sender_id, f"⏳ Sự cố #{pending_ticket[0]} đang chờ tiếp nhận. Vui lòng không gửi thêm!")
                 return
                 
             if step != 'waiting_for_issue':
-                current_bot.send_message(sender_id, "⚠️ **Vui lòng nhấn nút '🚨 Báo sự cố mới' bên dưới trước khi mô tả lỗi!**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                try:
+                    current_bot.send_message(sender_id, "⚠️ **Vui lòng nhấn nút '🚨 Báo sự cố mới' bên dưới trước khi mô tả lỗi!**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                except Exception:
+                    current_bot.send_message(sender_id, "⚠️ Vui lòng nhấn nút '🚨 Báo sự cố mới' bên dưới trước khi mô tả lỗi!", reply_markup=get_report_keyboard())
                 return
                 
             now = time.time()

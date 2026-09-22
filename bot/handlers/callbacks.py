@@ -19,12 +19,19 @@ def register_callback_handlers(current_bot):
             except Exception:
                 pass
             markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("❌ Hủy báo cáo", callback_data="cancelReport"))
+            msg_id = str(call.message.message_id) if call.message else "0"
+            set_state(call.from_user.id, 'waiting_for_issue', msg_id)
+            
+            chat_id = call.message.chat.id if call.message else call.from_user.id
             try: 
-                current_bot.edit_message_text("📝 **Mời bạn mô tả lỗi:**\n*(Hoặc nhấn nút Hủy)*", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
-                set_state(call.from_user.id, 'waiting_for_issue', str(call.message.message_id))
+                current_bot.edit_message_text("📝 **Mời bạn mô tả lỗi:**\n*(Hoặc nhấn nút Hủy)*", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode="Markdown")
             except Exception: 
-                msg = current_bot.send_message(call.message.chat.id, "📝 **Mời bạn mô tả lỗi:**\n*(Hoặc nhấn nút Hủy)*", reply_markup=markup, parse_mode="Markdown")
-                set_state(call.from_user.id, 'waiting_for_issue', str(msg.message_id))
+                try: 
+                    msg = current_bot.send_message(chat_id, "📝 **Mời bạn mô tả lỗi:**\n*(Hoặc nhấn nút Hủy)*", reply_markup=markup, parse_mode="Markdown")
+                    if msg: set_state(call.from_user.id, 'waiting_for_issue', str(msg.message_id))
+                except Exception:
+                    msg = current_bot.send_message(chat_id, "📝 Mời bạn mô tả lỗi:\n(Hoặc nhấn nút Hủy)", reply_markup=markup)
+                    if msg: set_state(call.from_user.id, 'waiting_for_issue', str(msg.message_id))
             return
 
         if call.data == 'cancelReport':
@@ -115,7 +122,8 @@ def register_callback_handlers(current_bot):
             conn = connect_db()
             cursor = conn.cursor()
             try:
-                cursor.execute("SELECT name FROM departments WHERE id = ?", (dept_id,))
+                dept_id_val = int(dept_id) if dept_id.isdigit() else dept_id
+                cursor.execute("SELECT name FROM departments WHERE id = ? OR CAST(id AS TEXT) = ?", (dept_id_val, str(dept_id)))
                 d_row = cursor.fetchone()
                 if d_row:
                     dept_name = d_row[0]
@@ -125,6 +133,8 @@ def register_callback_handlers(current_bot):
                         user_name = u_row[0]
                     cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
                     conn.commit()
+                    clear_state(sender_id)
+                    
                     # Delete ALL department chunk messages
                     all_to_delete = set(msg_ids)
                     all_to_delete.add(call.message.message_id)

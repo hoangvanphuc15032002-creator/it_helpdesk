@@ -30,29 +30,36 @@ def config_watchdog():
                 continue
                 
             try:
-                new_group = int(new_group_str)
+                new_group = int(str(new_group_str).strip())
             except Exception:
-                time.sleep(10)
-                continue
+                new_group = 0
 
             bot_config.TIME_OFFSET = new_offset
 
             if new_token != bot_config.TOKEN:
                 if bot_config.bot:
-                    bot_config.bot.stop_polling()
+                    try:
+                        bot_config.bot.stop_polling()
+                    except Exception:
+                        pass
                     time.sleep(3) 
                 bot_config.TOKEN = new_token
                 bot_config.GROUP_IT_ID = new_group
                 bot_config.bot = telebot.TeleBot(bot_config.TOKEN, num_threads=30)
+                try:
+                    bot_config.bot.remove_webhook(drop_pending_updates=True)
+                except Exception:
+                    pass
                 setup_bot_handlers(bot_config.bot)
-                sync_tickets_to_new_group(bot_config.bot, bot_config.GROUP_IT_ID)
+                if bot_config.GROUP_IT_ID != 0:
+                    sync_tickets_to_new_group(bot_config.bot, bot_config.GROUP_IT_ID)
                 
             elif new_group != bot_config.GROUP_IT_ID:
                 bot_config.GROUP_IT_ID = new_group
-                if bot_config.bot:
+                if bot_config.bot and bot_config.GROUP_IT_ID != 0:
                     sync_tickets_to_new_group(bot_config.bot, bot_config.GROUP_IT_ID)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ Lỗi Watchdog Cấu hình: {e}")
         time.sleep(10) 
 
 def start_bot():

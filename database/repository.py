@@ -21,19 +21,7 @@ def init_db():
     cursor.execute('CREATE TABLE IF NOT EXISTS active_sessions (user_id INTEGER, ticket_id INTEGER, role TEXT, topic_id INTEGER, PRIMARY KEY (user_id, ticket_id))')
     cursor.execute('CREATE TABLE IF NOT EXISTS user_states_db (user_id INTEGER PRIMARY KEY, step TEXT, temp_data TEXT)')
     
-    # Active sessions migration check
-    try:
-        info = cursor.execute("PRAGMA table_info(active_sessions)").fetchall()
-        pk_cols = [row[1] for row in info if row[5] > 0]
-        if pk_cols == ['user_id']:
-            cursor.execute("CREATE TABLE active_sessions_new (user_id INTEGER, ticket_id INTEGER, role TEXT, topic_id INTEGER, PRIMARY KEY (user_id, ticket_id))")
-            cursor.execute("INSERT OR IGNORE INTO active_sessions_new (user_id, ticket_id, role, topic_id) SELECT user_id, ticket_id, role, topic_id FROM active_sessions")
-            cursor.execute("DROP TABLE active_sessions")
-            cursor.execute("ALTER TABLE active_sessions_new RENAME TO active_sessions")
-    except Exception as e:
-        print("Migration active_sessions exception:", e)
-
-    # Schema alterations
+    # Schema alterations (Ensure all columns exist before migration)
     columns_to_add = [
         ('tickets', 'rating INTEGER'),
         ('it_staff', 'it_phone TEXT'),
@@ -53,10 +41,34 @@ def init_db():
             cursor.execute(f'ALTER TABLE {table} ADD COLUMN {col_def}')
         except Exception:
             pass
+
+    # Active sessions migration check
+    try:
+        info = cursor.execute("PRAGMA table_info(active_sessions)").fetchall()
+        pk_cols = [row[1] for row in info if row[5] > 0]
+        if pk_cols == ['user_id']:
+            cursor.execute("CREATE TABLE active_sessions_new (user_id INTEGER, ticket_id INTEGER, role TEXT, topic_id INTEGER, PRIMARY KEY (user_id, ticket_id))")
+            cursor.execute("INSERT OR IGNORE INTO active_sessions_new (user_id, ticket_id, role, topic_id) SELECT user_id, ticket_id, role, topic_id FROM active_sessions")
+            cursor.execute("DROP TABLE active_sessions")
+            cursor.execute("ALTER TABLE active_sessions_new RENAME TO active_sessions")
+    except Exception as e:
+        print("Migration active_sessions exception:", e)
     
-    # Auto cleanup orphaned sessions
+    # Auto cleanup orphaned sessions & dirty user states
     try:
         cursor.execute("DELETE FROM active_sessions WHERE ticket_id NOT IN (SELECT id FROM tickets WHERE status != 'Hoàn thành')")
+        cursor.execute("DELETE FROM user_states_db WHERE user_id NOT IN (SELECT user_id FROM users) AND user_id NOT IN (SELECT it_id FROM it_staff)")
+        cursor.execute("DELETE FROM user_states_db WHERE step = 'ask_dept' AND (temp_data IS NULL OR length(temp_data) > 50)")
+    except Exception:
+        pass
+
+    # Ensure default departments exist if table is empty
+    try:
+        count = cursor.execute("SELECT COUNT(*) FROM departments").fetchone()[0]
+        if count == 0:
+            default_depts = ['Phòng Kế Toán', 'Phòng Nhân Sự', 'Phòng Kinh Doanh', 'Phòng Kỹ Thuật / IT', 'Phòng Ban Khác']
+            for d in default_depts:
+                cursor.execute("INSERT OR IGNORE INTO departments (name) VALUES (?)", (d,))
     except Exception:
         pass
 

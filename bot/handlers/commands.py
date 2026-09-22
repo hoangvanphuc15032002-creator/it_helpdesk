@@ -162,14 +162,21 @@ def register_command_handlers(current_bot):
                 except Exception:
                     pass
             else:
+                clear_state(message.from_user.id)
                 cursor.execute('SELECT it_real_name FROM it_staff WHERE it_id = ?', (message.from_user.id,))
                 if cursor.fetchone():
-                    current_bot.send_message(message.chat.id, "👨‍💻 Chào IT. Tài khoản đã xác thực.\nHãy theo dõi nhóm tổng để nhận việc nhé!\n\n*(💡 Mẹo: Tạo nhóm mới, thêm Bot làm Admin và gõ /setworkspace để làm việc đa nhiệm bằng Forum Topic)*", parse_mode="Markdown")
+                    try:
+                        current_bot.send_message(message.chat.id, "👨‍💻 Chào IT. Tài khoản đã xác thực.\nHãy theo dõi nhóm tổng để nhận việc nhé!\n\n*(💡 Mẹo: Tạo nhóm mới, thêm Bot làm Admin và gõ /setworkspace để làm việc đa nhiệm bằng Forum Topic)*", parse_mode="Markdown")
+                    except Exception:
+                        current_bot.send_message(message.chat.id, "👨‍💻 Chào IT. Tài khoản đã xác thực.\nHãy theo dõi nhóm tổng để nhận việc nhé!")
                 else:
                     cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (message.from_user.id,))
                     user = cursor.fetchone()
                     if user: 
-                        current_bot.send_message(message.chat.id, f"👋 Chào **{user[0]}** - Phòng: **{user[1]}**.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                        try:
+                            current_bot.send_message(message.chat.id, f"👋 Chào **{user[0]}** - Phòng: **{user[1]}**.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                        except Exception:
+                            current_bot.send_message(message.chat.id, f"👋 Chào {user[0]} - Phòng: {user[1]}.", reply_markup=get_report_keyboard())
                     else:
                         set_state(message.from_user.id, 'ask_name')
                         current_bot.send_message(message.chat.id, "👋 Chào mừng bạn! Cho biết **Họ và Tên** của bạn:")
