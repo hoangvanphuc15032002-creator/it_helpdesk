@@ -18,7 +18,7 @@ def api_export_db():
     if session.get('role') != 'superadmin':
         return "Truy cập bị từ chối! Chỉ SuperAdmin mới được xuất Database.", 403
     
-    db_path = 'helpdesk.db'
+    db_path = os.environ.get('DB_PATH', 'helpdesk.db')
     if os.path.exists(db_path):
         filename = f"helpdesk_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db"
         return send_file(db_path, as_attachment=True, download_name=filename)

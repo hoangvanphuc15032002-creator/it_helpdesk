@@ -47,7 +47,7 @@ def config_watchdog():
                 bot_config.GROUP_IT_ID = new_group
                 bot_config.bot = telebot.TeleBot(bot_config.TOKEN, num_threads=30)
                 try:
-                    bot_config.bot.remove_webhook(drop_pending_updates=True)
+                    bot_config.bot.remove_webhook()
                 except Exception:
                     pass
                 setup_bot_handlers(bot_config.bot)

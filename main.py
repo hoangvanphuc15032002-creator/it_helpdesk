@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 import time
@@ -6,12 +7,13 @@ import sqlite3
 
 def checkpoint_db():
     try:
-        conn = sqlite3.connect('helpdesk.db', timeout=30)
+        db_path = os.environ.get('DB_PATH', 'helpdesk.db')
+        conn = sqlite3.connect(db_path, timeout=30)
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA busy_timeout=30000;")
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
         conn.close()
-        print("✅ Đã tự động dồn dữ liệu từ helpdesk.db-wal vào helpdesk.db!")
+        print(f"✅ Đã tự động dồn dữ liệu WAL vào {db_path}!")
     except Exception:
         pass
 

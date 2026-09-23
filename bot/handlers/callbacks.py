@@ -153,6 +153,13 @@ def register_callback_handlers(current_bot):
             return
 
         parts = call.data.split('_')
+        if len(parts) < 2:
+            try:
+                current_bot.answer_callback_query(call.id)
+            except Exception:
+                pass
+            return
+
         action, ticket_id = parts[0], parts[1]
         it_id = call.from_user.id
 

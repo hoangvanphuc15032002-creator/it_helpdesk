@@ -54,11 +54,9 @@ def init_db():
     except Exception as e:
         print("Migration active_sessions exception:", e)
     
-    # Auto cleanup orphaned sessions & dirty user states
+    # Auto cleanup orphaned sessions
     try:
         cursor.execute("DELETE FROM active_sessions WHERE ticket_id NOT IN (SELECT id FROM tickets WHERE status != 'Hoàn thành')")
-        cursor.execute("DELETE FROM user_states_db WHERE user_id NOT IN (SELECT user_id FROM users) AND user_id NOT IN (SELECT it_id FROM it_staff)")
-        cursor.execute("DELETE FROM user_states_db WHERE step = 'ask_dept' AND (temp_data IS NULL OR length(temp_data) > 50)")
     except Exception:
         pass
 
@@ -104,6 +102,8 @@ def clear_state(uid):
     finally:
         conn.close()
 
+import os
+
 def get_config_from_db():
     conn = connect_db()
     try:
@@ -114,6 +114,13 @@ def get_config_from_db():
         t = token_row[0].strip() if token_row else None
         g = group_row[0].strip() if group_row else None
         o = int(offset_row[0]) if offset_row else 0
+        
+        # Environment variables take precedence if defined on server
+        if os.environ.get('BOT_TOKEN'):
+            t = os.environ['BOT_TOKEN'].strip()
+        if os.environ.get('GROUP_IT_ID'):
+            g = os.environ['GROUP_IT_ID'].strip()
+            
         return t, g, o
     finally:
         conn.close()
