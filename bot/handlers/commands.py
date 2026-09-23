@@ -127,6 +127,29 @@ def register_command_handlers(current_bot):
         markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("👨‍💻 Xác Thực IT", url=auth_url))
         current_bot.send_message(message.chat.id, "🚨 **NHÂN SỰ IT:** Bấm nút để đăng ký tên & SĐT.", reply_markup=markup, parse_mode="Markdown")
 
+    @current_bot.message_handler(commands=['thongbao', 'announcement'])
+    def send_group_announcement(message):
+        if message.chat.type == 'private':
+            return
+        args = message.text.split(maxsplit=1)
+        if len(args) > 1 and args[1].strip():
+            notice_text = f"📢 **THÔNG BÁO TỪ BỘ PHẬN IT**\n\n{args[1].strip()}"
+        else:
+            notice_text = (
+                "📢 **THÔNG BÁO BẢO TRÌ HỆ THỐNG IT HELPDESK**\n\n"
+                "Kính gửi Quý anh/chị Nhân viên,\n\n"
+                "Hiện tại hệ thống Bot IT Helpdesk đang trong quá trình nâng cấp & bảo trì kỹ thuật.\n"
+                "Trong thời gian này, nếu gặp sự cố cần hỗ trợ gấp, vui lòng liên hệ trực tiếp nhân sự IT.\n\n"
+                "Xin cảm ơn sự hợp tác của Quý anh/chị! 🙏"
+            )
+        bot_uname = get_bot_username(current_bot)
+        auth_url = f"https://t.me/{bot_uname}" if bot_uname else "https://t.me"
+        markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🆘 Liên hệ IT", url=auth_url))
+        try:
+            current_bot.send_message(message.chat.id, notice_text, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            current_bot.send_message(message.chat.id, notice_text.replace("**", "").replace("*", ""), reply_markup=markup)
+
     @current_bot.message_handler(commands=['setup'])
     def setup_group(message):
         if message.chat.type == 'private':
