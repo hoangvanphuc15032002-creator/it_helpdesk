@@ -5,7 +5,7 @@ Handles inline button clicks for ticket actions (claim, done, ask-support, join,
 from telebot import types
 import config.settings as bot_config
 from database.connection import connect_db
-from database.repository import set_state, get_state, clear_state
+from database.repository import set_state, get_state, clear_state, get_maintenance_status
 from utils.helpers import get_adjusted_time, safe_edit_message, truncate_text
 from bot.keyboards import get_rating_keyboard, get_report_keyboard, get_departments_keyboard, get_departments_reply_keyboard, send_department_chunks
 
@@ -18,6 +18,15 @@ def register_callback_handlers(current_bot):
                 current_bot.answer_callback_query(call.id)
             except Exception:
                 pass
+            
+            is_maint, maint_msg = get_maintenance_status()
+            if is_maint:
+                chat_id = call.message.chat.id if call.message else call.from_user.id
+                try:
+                    current_bot.send_message(chat_id, maint_msg, parse_mode="Markdown")
+                except Exception:
+                    current_bot.send_message(chat_id, maint_msg.replace("**", "").replace("*", ""))
+                return
             markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("❌ Hủy báo cáo", callback_data="cancelReport"))
             msg_id = str(call.message.message_id) if call.message else "0"
             set_state(call.from_user.id, 'waiting_for_issue', msg_id)

@@ -115,12 +115,36 @@ def get_config_from_db():
         g = group_row[0].strip() if group_row else None
         o = int(offset_row[0]) if offset_row else 0
         
-        # Environment variables take precedence if defined on server
         if os.environ.get('BOT_TOKEN'):
             t = os.environ['BOT_TOKEN'].strip()
         if os.environ.get('GROUP_IT_ID'):
             g = os.environ['GROUP_IT_ID'].strip()
             
         return t, g, o
+    finally:
+        conn.close()
+
+DEFAULT_MAINTENANCE_MSG = "⚠️ **THÔNG BÁO BẢO TRÌ HỆ THỐNG IT HELPDESK**\n\nHệ thống hiện đang trong quá trình nâng cấp và bảo trì. Vui lòng liên hệ trực tiếp phòng IT hoặc thử lại sau ít phút!\nXin lỗi vì sự bất tiện này."
+
+def get_maintenance_status():
+    conn = connect_db()
+    try:
+        cursor = conn.cursor()
+        m_row = cursor.execute("SELECT value FROM settings WHERE key='MAINTENANCE_MODE'").fetchone()
+        msg_row = cursor.execute("SELECT value FROM settings WHERE key='MAINTENANCE_NOTICE'").fetchone()
+        is_active = (m_row[0] == '1') if m_row else False
+        notice_msg = msg_row[0] if (msg_row and msg_row[0]) else DEFAULT_MAINTENANCE_MSG
+        return is_active, notice_msg
+    finally:
+        conn.close()
+
+def set_maintenance_status(active=True, custom_msg=None):
+    conn = connect_db()
+    try:
+        val = '1' if active else '0'
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('MAINTENANCE_MODE', ?)", (val,))
+        if custom_msg:
+            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('MAINTENANCE_NOTICE', ?)", (custom_msg,))
+        conn.commit()
     finally:
         conn.close()

@@ -7,7 +7,7 @@ import requests
 from datetime import datetime
 from flask import Blueprint, jsonify, request, session, send_file
 from werkzeug.security import generate_password_hash
-from database.connection import get_db_connection
+from database.connection import get_db_connection, get_default_db_path
 from web.middleware import login_required
 
 system_bp = Blueprint('system', __name__)
@@ -18,7 +18,7 @@ def api_export_db():
     if session.get('role') != 'superadmin':
         return "Truy cập bị từ chối! Chỉ SuperAdmin mới được xuất Database.", 403
     
-    db_path = os.environ.get('DB_PATH', 'helpdesk.db')
+    db_path = os.path.abspath(get_default_db_path())
     if os.path.exists(db_path):
         filename = f"helpdesk_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db"
         return send_file(db_path, as_attachment=True, download_name=filename)

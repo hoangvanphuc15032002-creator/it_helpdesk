@@ -5,9 +5,16 @@ import time
 import socket
 import sqlite3
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
+from database.connection import get_default_db_path
+
 def checkpoint_db():
     try:
-        db_path = os.environ.get('DB_PATH', 'helpdesk.db')
+        db_path = get_default_db_path()
         conn = sqlite3.connect(db_path, timeout=30)
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA busy_timeout=30000;")
@@ -33,14 +40,17 @@ lan_ip = get_lan_ip()
 
 print("🚀 ĐANG KHỞI ĐỘNG HỆ THỐNG IT HELPDESK...")
 
+env = os.environ.copy()
+env['PYTHONIOENCODING'] = 'utf-8'
+
 try:
     print("-> Đang bật Bot Telegram...")
-    bot_process = subprocess.Popen([sys.executable, 'bot.py'])
+    bot_process = subprocess.Popen([sys.executable, 'bot.py'], env=env)
     
     time.sleep(2)
 
     print("-> Đang bật trang Web Dashboard...")
-    web_process = subprocess.Popen([sys.executable, 'app.py'])
+    web_process = subprocess.Popen([sys.executable, 'app.py'], env=env)
 
     print("\n✅ HỆ THỐNG ĐÃ HOẠT ĐỘNG THÀNH CÔNG!")
     print("👉 Bot đã sẵn sàng nhận tin nhắn.")
@@ -53,10 +63,10 @@ try:
         time.sleep(3)
         if bot_process.poll() is not None:
             print("⚠️ Phát hiện Bot Telegram bị tắt! Đang tự động khởi động lại...")
-            bot_process = subprocess.Popen([sys.executable, 'bot.py'])
+            bot_process = subprocess.Popen([sys.executable, 'bot.py'], env=env)
         if web_process.poll() is not None:
             print("⚠️ Phát hiện Web Dashboard bị tắt! Đang tự động khởi động lại...")
-            web_process = subprocess.Popen([sys.executable, 'app.py'])
+            web_process = subprocess.Popen([sys.executable, 'app.py'], env=env)
 
 except KeyboardInterrupt:
     print("\n🛑 Đang dọn dẹp và tắt hệ thống...")

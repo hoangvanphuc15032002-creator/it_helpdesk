@@ -2,4 +2,5 @@ helpdesk.db
 helpdesk.db-wal
 helpdesk.db-shm
 *.db
+*.bak
 __pycache__/
