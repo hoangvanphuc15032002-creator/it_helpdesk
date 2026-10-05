@@ -2,6 +2,12 @@
 Bot Runner & Supervisor Module
 Initializes TeleBot instance, background watchdog threads, and polling loop.
 """
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 import threading
 import time
 import telebot
@@ -15,7 +21,12 @@ def run_bot_polling():
     while bot_config.is_running:
         try:
             if bot_config.bot:
-                bot_config.bot.polling(none_stop=True, timeout=60, long_polling_timeout=60)
+                bot_config.bot.polling(
+                    none_stop=True, 
+                    timeout=60, 
+                    long_polling_timeout=60,
+                    allowed_updates=['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query', 'my_chat_member', 'chat_member']
+                )
             time.sleep(2)  
         except Exception:
             if bot_config.is_running:

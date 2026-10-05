@@ -113,50 +113,64 @@ def register_callback_handlers(current_bot):
                 current_bot.answer_callback_query(call.id, "Đã chọn phòng ban!")
             except Exception:
                 pass
-            dept_id = call.data[8:]
+            dept_id_raw = call.data[8:]
             sender_id = call.from_user.id
             step, temp_data = get_state(sender_id)
             
-            user_name = (call.from_user.full_name or f"Khách #{sender_id}")
-            msg_ids = []
+            user_name = call.from_user.full_name or f"Khách #{sender_id}"
             if temp_data and temp_data != 'None':
-                parts = temp_data.split('|')
-                user_name = parts[0]
-                if len(parts) > 1 and parts[1]:
-                    try:
-                        msg_ids = [int(x) for x in parts[1].split(',') if x.strip().isdigit()]
-                    except Exception:
-                        pass
+                if '|' in temp_data:
+                    parts = temp_data.rsplit('|', 1)
+                    if parts[0].strip():
+                        user_name = parts[0].strip()
+                else:
+                    if temp_data.strip():
+                        user_name = temp_data.strip()
 
             conn = connect_db()
             cursor = conn.cursor()
             try:
-                dept_id_val = int(dept_id) if dept_id.isdigit() else dept_id
-                cursor.execute("SELECT name FROM departments WHERE id = ? OR CAST(id AS TEXT) = ?", (dept_id_val, str(dept_id)))
+                dept_name = None
+                dept_id_val = int(dept_id_raw) if dept_id_raw.isdigit() else dept_id_raw
+                cursor.execute(
+                    "SELECT name FROM departments WHERE id = ? OR CAST(id AS TEXT) = ? OR LOWER(name) = ? OR LOWER(name) LIKE ?", 
+                    (dept_id_val, str(dept_id_raw), str(dept_id_raw).lower(), f"%{str(dept_id_raw).lower()}%")
+                )
                 d_row = cursor.fetchone()
                 if d_row:
                     dept_name = d_row[0]
-                    cursor.execute('SELECT name FROM users WHERE user_id = ?', (sender_id,))
-                    u_row = cursor.fetchone()
-                    if u_row and u_row[0]:
-                        user_name = u_row[0]
-                    cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
-                    conn.commit()
-                    clear_state(sender_id)
-                    
-                    # Delete ALL department chunk messages
-                    all_to_delete = set(msg_ids)
-                    all_to_delete.add(call.message.message_id)
-                    for m_id in all_to_delete:
+                else:
+                    dept_name = str(dept_id_raw)
+                
+                cursor.execute('SELECT name FROM users WHERE user_id = ?', (sender_id,))
+                u_row = cursor.fetchone()
+                if u_row and u_row[0] and (not user_name or user_name.startswith("Khách #")):
+                    user_name = u_row[0]
+
+                cursor.execute('INSERT OR REPLACE INTO users (user_id, name, dept) VALUES (?, ?, ?)', (sender_id, user_name, dept_name))
+                conn.commit()
+                clear_state(sender_id)
+                
+                chat_id = call.message.chat.id if call.message else sender_id
+                confirm_text = f"✅ **Đã lưu thông tin!**\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**"
+                edited = False
+                if call.message:
+                    try:
+                        current_bot.edit_message_text(confirm_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                        edited = True
+                    except Exception:
                         try:
-                            current_bot.delete_message(call.message.chat.id, m_id)
+                            confirm_text_clean = f"✅ Đã lưu thông tin!\n👤 Tên: {user_name}\n🏢 Phòng ban: {dept_name}"
+                            current_bot.edit_message_text(confirm_text_clean, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_report_keyboard())
+                            edited = True
                         except Exception:
                             pass
-
+                
+                if not edited:
                     try:
-                        current_bot.send_message(call.message.chat.id, f"✅ Đã lưu thông tin!\n👤 Tên: **{user_name}**\n🏢 Phòng ban: **{dept_name}**", reply_markup=get_report_keyboard(), parse_mode="Markdown")
+                        current_bot.send_message(chat_id, confirm_text, reply_markup=get_report_keyboard(), parse_mode="Markdown")
                     except Exception:
-                        current_bot.send_message(call.message.chat.id, f"✅ Đã lưu thông tin!\n👤 Tên: {user_name}\n🏢 Phòng ban: {dept_name}", reply_markup=get_report_keyboard())
+                        current_bot.send_message(chat_id, f"✅ Đã lưu thông tin!\n👤 Tên: {user_name}\n🏢 Phòng ban: {dept_name}", reply_markup=get_report_keyboard())
             finally:
                 conn.close()
             return

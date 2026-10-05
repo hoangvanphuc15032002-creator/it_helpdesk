@@ -163,16 +163,29 @@ def register_routing_handlers(current_bot):
                 return
             elif step == 'ask_dept':
                 dept_text = message.text.strip() if (message.text and message.content_type == 'text') else "Khác"
-                user_name = (temp_data.split('|')[0] if temp_data and temp_data != 'None' else None) or (message.from_user.full_name or f"Khách #{sender_id}")
                 
-                if temp_data and '|' in temp_data:
-                    try:
-                        m_ids = [int(x) for x in temp_data.split('|')[1].split(',') if x.strip().isdigit()]
-                        for m_id in m_ids:
+                user_name = None
+                m_ids = []
+                if temp_data and temp_data != 'None':
+                    if '|' in temp_data:
+                        parts = temp_data.rsplit('|', 1)
+                        if parts[0].strip():
+                            user_name = parts[0].strip()
+                        if len(parts) > 1 and parts[1]:
                             try:
-                                current_bot.delete_message(sender_id, m_id)
+                                m_ids = [int(x) for x in parts[1].split(',') if x.strip().isdigit()]
                             except Exception:
                                 pass
+                    else:
+                        if temp_data.strip():
+                            user_name = temp_data.strip()
+
+                if not user_name:
+                    user_name = message.from_user.full_name or f"Khách #{sender_id}"
+                
+                for m_id in m_ids:
+                    try:
+                        current_bot.delete_message(sender_id, m_id)
                     except Exception:
                         pass
 

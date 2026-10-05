@@ -19,13 +19,37 @@ def safe_edit_message(current_bot, chat_id, message_id, new_text, reply_markup=N
     if not current_bot or not chat_id or not message_id:
         return
     plain_text = new_text.replace("**", "").replace("*", "").replace("`", "").replace("_", "")
+    
+    # 1. Thử edit_message_text (dành cho tin nhắn văn bản thông thường)
     try:
         current_bot.edit_message_text(new_text, chat_id=chat_id, message_id=message_id, reply_markup=reply_markup, parse_mode="Markdown")
+        return
     except Exception:
         try:
             current_bot.edit_message_text(plain_text, chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
+            return
         except Exception:
             pass
+
+    # 2. Thử edit_message_caption (dành cho tin nhắn media: ảnh, tài liệu, video, voice...)
+    # Lưu ý: Caption của Telegram giới hạn tối đa 1024 ký tự
+    cap_md = truncate_text(new_text, 1000)
+    cap_plain = truncate_text(plain_text, 1000)
+    try:
+        current_bot.edit_message_caption(caption=cap_md, chat_id=chat_id, message_id=message_id, reply_markup=reply_markup, parse_mode="Markdown")
+        return
+    except Exception:
+        try:
+            current_bot.edit_message_caption(caption=cap_plain, chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
+            return
+        except Exception:
+            pass
+
+    # 3. Fallback: Nếu không sửa được nội dung (hoặc caption không đổi), vẫn đảm bảo cập nhật/xóa được nút bấm
+    try:
+        current_bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
+    except Exception:
+        pass
 
 def safe_send_content(current_bot, target_chat, content_type, text_content=None, file_id=None, caption=None, prefix="", message_thread_id=None):
     plain_prefix = prefix.replace("**", "").replace("*", "").replace("`", "").replace("_", "")

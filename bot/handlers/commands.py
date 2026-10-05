@@ -195,7 +195,7 @@ def register_command_handlers(current_bot):
                 else:
                     cursor.execute('SELECT name, dept FROM users WHERE user_id = ?', (message.from_user.id,))
                     user = cursor.fetchone()
-                    if user: 
+                    if user and user[0] and user[1]: 
                         try:
                             current_bot.send_message(message.chat.id, f"👋 Chào **{user[0]}** - Phòng: **{user[1]}**.", reply_markup=get_report_keyboard(), parse_mode="Markdown")
                         except Exception:
